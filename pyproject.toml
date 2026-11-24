@@ -21,9 +21,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "flax>=0.12.12",
     "jax>=0.12.1",
     "jaxtyping>=0.3.11",
     "numpy>=2.2",
+    "optax>=0.2.9",
     "pettingzoo>=1.27.0",
     "tyro>=1.0.17",
 ]

@@ -24,6 +24,36 @@
 
 ::: sparjax.opponents.cfr
 
+## Sebulba architecture
+
+::: sparjax.arch.lifetime
+
+::: sparjax.arch.param_server
+
+::: sparjax.arch.pipeline
+
+::: sparjax.arch.devices
+
+## PPO
+
+::: sparjax.agents.ppo.networks
+
+::: sparjax.agents.ppo.loss
+
+::: sparjax.agents.ppo.system
+
+## Evaluation
+
+::: sparjax.eval.exact
+
+## Configuration and logging
+
+::: sparjax.config
+
+::: sparjax.experiment
+
+::: sparjax.loggers
+
 ## Command line
 
 ::: sparjax.cli

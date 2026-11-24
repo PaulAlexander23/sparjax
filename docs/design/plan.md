@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1–M3 complete (PRs open); M4 next.**
+> Status as of 2026-11-24: **M1–M4 complete (PRs open); M5 next.**
 
 ## Guiding rules
 
@@ -133,11 +133,23 @@ N = 64–256, about 10.6k at N = 16, and the same against a CFR tabular opponent
 
 **Done when:** PPO on Kuhn against a uniform-random opponent beats it clearly, and against CFR(k) gets close to its best-response value.
 
+*Outcome:* mostly done. PPO reaches the exact best-response payoff against random play and
+CFR(2), and is within 1.8% against CFR(5). Against CFR(20) it stalls at 36% of the ceiling
+because entropy collapses early (see the Kuhn PPO experiment page). Deviations from the plan:
+- The learner is **single-device** `jax.jit`. `shard_map` over several learner devices
+  moved to M7, because the dev machine has one GPU and can't test it.
+- **Exact evaluation** (`eval/exact.py`: network → tabular policy → OpenSpiel payoff and
+  exploitability) was pulled forward from M5 to measure this milestone.
+- `ParameterServer` is a versioned latest-value slot (explicit `max_lag`) rather than
+  Stoix's per-actor queues.
+- Truncations are treated as terminations in GAE (the poker envs never truncate). Correct
+  bootstrapping needs the pre-reset final observation, which is noted for M7.
+
 ---
 
 ## M5: Leduc against CFR + evaluation
 
-1. `eval/`: payoff with confidence intervals for each seat; the gap to the best response; exploitability of the PPO policy (query the network at every info state to build an OpenSpiel `TabularPolicy`).
+1. `eval/`: payoff with confidence intervals for each seat; the gap to the best response; exploitability of the PPO policy. *(Exact versions of all three landed in M4.)* Remaining: the exploration fixes found in M4 (entropy schedule / tuning) so PPO can capture small edges.
 2. An async evaluator thread, plus checkpointing (orbax or plain npz; decided here).
 3. An experiment script and a docs page with curves: PPO payoff against CFR(k) for 2–3 values of k, next to the exact BR value.
 
