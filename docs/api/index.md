@@ -8,6 +8,10 @@
 
 ::: sparjax.envs.types
 
+::: sparjax.envs.batch
+
+::: sparjax.envs.loop
+
 ## Opponents
 
 ::: sparjax.opponents.base

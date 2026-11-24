@@ -109,12 +109,14 @@ reportUnusedCallResult = false
 
 [[tool.basedpyright.executionEnvironments]]
 root = "tests"
+extraPaths = ["."]
 # pytest fixtures and parametrisation are loosely typed.
 reportPrivateUsage = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownVariableType = false
 reportMissingTypeStubs = false
+reportUnknownLambdaType = false
 
 # ---------------------------------------------------------------------------
 # pytest / coverage

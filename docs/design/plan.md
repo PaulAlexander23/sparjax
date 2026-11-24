@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1 and M2 complete (PRs open); M3 next.**
+> Status as of 2026-11-24: **M1–M3 complete (PRs open); M4 next.**
 
 ## Guiding rules
 
@@ -110,6 +110,12 @@ class OpponentProvider(Protocol):
 4. Tests (Hypothesis property tests): the sum of learner rewards per episode equals the game's return; the learner is never asked to act off-turn; shapes are constant; seats are balanced across resets.
 
 **Done when:** a random learner against `RandomOpponent` on Leduc runs for 10k steps with all invariants holding.
+
+*Outcome:* done. The reward-accounting property test caught a real bug: a reward received in a
+freshly reset game, before the learner's first move, was credited to the previous game's final
+transition. It is fixed with a per-env carry that goes into the new game's first transition.
+Throughput on one core (Leduc, random learner): about 14k learner steps/s (7k games/s) at
+N = 64–256, about 10.6k at N = 16, and the same against a CFR tabular opponent.
 
 ---
 
