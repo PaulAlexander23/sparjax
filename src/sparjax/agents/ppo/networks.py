@@ -16,6 +16,7 @@ from typing import Any, override
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from flax import nnx
 from jaxtyping import Array, Bool, Float, Int
 
@@ -45,30 +46,77 @@ def _mlp(
 
 
 class ActorCritic(nnx.Module):
-    """Separate MLP torsos for the policy logits and the state value."""
+    """Actor-critic with an optional shared CNN torso and separate MLP heads.
+
+    * Without ``conv_channels``: the observation is flattened and fed to two separate
+      MLPs (policy and value), as in M4.
+    * With ``conv_channels``: a shared stack of 3x3 ``SAME`` convolutions (ReLU) reads an
+      ``HxWxC`` observation, and its flattened features feed the two MLP heads.
+    """
 
     def __init__(
-        self, obs_dim: int, num_actions: int, hidden: Sequence[int], rngs: nnx.Rngs
+        self,
+        obs_shape: Sequence[int],
+        num_actions: int,
+        hidden: Sequence[int],
+        rngs: nnx.Rngs,
+        conv_channels: Sequence[int] = (),
     ) -> None:
-        """Build the actor (small output init) and critic MLPs."""
-        self.actor: nnx.Sequential = _mlp(obs_dim, hidden, num_actions, rngs, out_scale=0.01)
-        self.critic: nnx.Sequential = _mlp(obs_dim, hidden, 1, rngs, out_scale=1.0)
+        """Build the torso and heads (small output init for the policy head)."""
+        self.obs_shape: tuple[int, ...] = tuple(int(d) for d in obs_shape)
+        conv: nnx.Sequential | None = None
+        if conv_channels:
+            if len(self.obs_shape) != 3:
+                raise ValueError(f"a CNN torso needs H x W x C observations, got {self.obs_shape}")
+            layers: list[Any] = []
+            channels = self.obs_shape[-1]
+            for c in conv_channels:
+                layers += [
+                    nnx.Conv(
+                        channels,
+                        c,
+                        kernel_size=(3, 3),
+                        padding="SAME",
+                        kernel_init=nnx.initializers.orthogonal(jnp.sqrt(2.0)),
+                        rngs=rngs,
+                    ),
+                    jax.nn.relu,
+                ]
+                channels = c
+            conv = nnx.Sequential(*layers)
+            features = self.obs_shape[0] * self.obs_shape[1] * channels
+        else:
+            features = int(np.prod(self.obs_shape))
+        # Assign once, explicitly as data, so nnx treats it as a sub-module either way.
+        self.conv: nnx.Sequential | None = nnx.data(conv)
+        self.actor: nnx.Sequential = _mlp(features, hidden, num_actions, rngs, out_scale=0.01)
+        self.critic: nnx.Sequential = _mlp(features, hidden, 1, rngs, out_scale=1.0)
 
     @override
     def __call__(
-        self, obs: Float[Array, "*batch obs_dim"], mask: Bool[Array, "*batch num_actions"]
+        self, obs: Float[Array, "*batch ..."], mask: Bool[Array, "*batch num_actions"]
     ) -> tuple[Float[Array, "*batch num_actions"], Float[Array, "*batch"]]:
         """Return masked logits (illegal actions at -1e9) and values."""
-        logits = jnp.where(mask, self.actor(obs), _NEG_INF)
-        value = self.critic(obs)[..., 0]
+        batch = obs.shape[: obs.ndim - len(self.obs_shape)]
+        x = obs.astype(jnp.float32)
+        if self.conv is not None:
+            x = self.conv(x.reshape(-1, *self.obs_shape))
+        x = x.reshape(*batch, -1)
+        logits = jnp.where(mask, self.actor(x), _NEG_INF)
+        value = self.critic(x)[..., 0]
         return logits, value
 
 
 def init_actor_critic(
-    obs_dim: int, num_actions: int, hidden: Sequence[int], seed: int
+    obs_shape: int | Sequence[int],
+    num_actions: int,
+    hidden: Sequence[int],
+    seed: int,
+    conv_channels: Sequence[int] = (),
 ) -> tuple[nnx.GraphDef[ActorCritic], Params]:
     """Create a network and split it into ``(graphdef, params)``."""
-    model = ActorCritic(obs_dim, num_actions, hidden, nnx.Rngs(seed))
+    shape = (obs_shape,) if isinstance(obs_shape, int) else tuple(obs_shape)
+    model = ActorCritic(shape, num_actions, hidden, nnx.Rngs(seed), conv_channels)
     graphdef, params = nnx.split(model)
     return graphdef, params
 

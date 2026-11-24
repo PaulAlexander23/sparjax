@@ -21,7 +21,7 @@ KUHN_CEILING_VS_RANDOM = 0.4583333
 
 def small_cfg(**kw: object) -> TrainConfig:
     base: dict[str, object] = {
-        "env": EnvConfig("kuhn_poker", num_envs=32),
+        "env": EnvConfig("openspiel:kuhn_poker", num_envs=32),
         "arch": ArchConfig(num_actors=2),
         "ppo": PPOConfig(rollout_len=16, update=PPOHyperparams(num_minibatches=4)),
         "total_timesteps": 2 * 32 * 16 * 60,
@@ -35,7 +35,8 @@ def small_cfg(**kw: object) -> TrainConfig:
 def test_ppo_learns_to_exploit_random_kuhn_opponent() -> None:
     """CI smoke test: PPO approaches the exact best-response payoff vs a random player."""
     cfg = small_cfg()
-    spec = make_opponent(cfg.opponent, cfg.env.game)
+    spec = make_opponent(cfg.opponent, cfg.env.spec.openspiel_game)
+    assert spec.table is not None
     result = train(cfg, make_env_fn(cfg), make_provider(spec))
     ev = evaluate_exact(
         network_to_tabular(result.graphdef, result.params, "kuhn_poker"), spec.table
@@ -105,6 +106,7 @@ def test_make_opponent_variants(tmp_path: Path) -> None:
     path = solve_cfr("kuhn_poker", 3).save(tmp_path / "k.npz")
     loaded = make_opponent(OpponentConfig("policy", policy_path=path), "kuhn_poker")
     assert loaded.opponent_id == "k"
+    assert loaded.table is not None
     assert len(loaded.table) == 12
     with pytest.raises(ValueError, match="policy_path"):
         make_opponent(OpponentConfig("policy"), "kuhn_poker")
@@ -208,7 +210,7 @@ def test_async_eval_rows_and_checkpoints(tmp_path: Path) -> None:
     for key in a.probs:
         np.testing.assert_allclose(a.probs[key], b.probs[key], atol=1e-6)
     config = json.loads((tmp_path / "config.json").read_text())
-    assert config["env"]["game"] == "kuhn_poker"
+    assert config["env"]["id"] == "openspiel:kuhn_poker"
 
 
 def test_entropy_schedule_and_lr_annealing() -> None:
@@ -227,3 +229,60 @@ def test_entropy_schedule_and_lr_annealing() -> None:
     coefs = [h["ppo/ent_coef"] for h in result.history]
     assert coefs[0] == pytest.approx(0.01)
     assert coefs == sorted(coefs, reverse=True)
+
+
+def test_train_on_pettingzoo_go_with_subprocess_workers(tmp_path: Path) -> None:
+    """End to end on a native PettingZoo env: CNN, subprocess workers, timing metrics."""
+    cfg = TrainConfig(
+        env=EnvConfig("pettingzoo:classic/go-v5", {"board_size": 5}, num_envs=8, num_workers=2),
+        arch=ArchConfig(num_actors=1),
+        ppo=PPOConfig(rollout_len=8, hidden=(16,), conv_channels=(4,)),
+        total_timesteps=8 * 8 * 3,
+        log_every=1,
+        log_dir=tmp_path,
+    )
+    result = train(cfg, cfg.env.spec, FixedProvider(RandomOpponent()))
+    last = result.history[-1]
+    for key in ("perf/learner_wait_s", "perf/learner_update_s", "perf/actor_collect_s"):
+        assert last[key] >= 0.0
+    assert 0.0 <= last["train/win_rate"] <= 1.0
+    ckpt = load_checkpoint(tmp_path / "checkpoints" / "update_000003.npz")
+    assert ckpt.params is not None
+
+
+def test_make_opponent_for_non_openspiel_env() -> None:
+    spec = make_opponent(OpponentConfig("random"), None)
+    assert spec.table is None
+    with pytest.raises(ValueError, match="needs an OpenSpiel env"):
+        make_opponent(OpponentConfig("cfr"), None)
+
+
+def test_cli_train_pettingzoo_env(capsys: pytest.CaptureFixture[str]) -> None:
+    main(
+        [
+            "train",
+            "--env.id",
+            "pettingzoo:classic/go-v5",
+            "--env.kwargs",
+            "board_size",
+            "5",
+            "--env.num-envs",
+            "4",
+            "--arch.num-actors",
+            "1",
+            "--ppo.conv-channels",
+            "4",
+            "--ppo.hidden",
+            "8",
+            "--ppo.rollout-len",
+            "4",
+            "--total-timesteps",
+            "32",
+            "--log-every",
+            "1",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "env=pettingzoo:classic/go-v5" in out
+    assert "ceiling" not in out  # no exact evaluation outside OpenSpiel
+    assert "train/win_rate" in out

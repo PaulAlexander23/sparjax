@@ -34,8 +34,17 @@ dependencies = [
 cuda12 = [
     "jax[cuda12]>=0.12.1",
 ]
+# Pascal GPUs (GTX 10xx, compute capability 6.x): cuDNN >= 9.11 can no longer run
+# convolutions on them, so pin the last cuDNN that can.
+cuda12-pascal = [
+    "jax[cuda12]>=0.12.1",
+    "nvidia-cudnn-cu12==9.10.2.21",
+]
 openspiel = [
     "open-spiel>=2.0.2",
+]
+go = [
+    "pygame-ce>=2.5.8",
 ]
 
 [project.scripts]
@@ -44,6 +53,9 @@ sparjax = "sparjax.cli:main"
 [project.urls]
 Repository = "https://github.com/PaulAlexander23/sparjax"
 Documentation = "https://paulalexander23.github.io/sparjax/"
+
+[tool.uv]
+conflicts = [[{ extra = "cuda12" }, { extra = "cuda12-pascal" }]]
 
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]
@@ -55,6 +67,7 @@ dev = [
     "hypothesis>=6.170.17",
     "open-spiel>=2.0.2",
     "pre-commit>=4.7.0",
+    "pygame-ce>=2.5.8",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.6",
@@ -135,7 +148,11 @@ markers = [
     "slow: long-running tests (deselect with '-m \"not slow\"')",
     "gpu: tests that need a GPU",
 ]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # pettingzoo.test imports a classic env through PettingZoo's own deprecated API.
+    "ignore:The old environment creation API has been deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true

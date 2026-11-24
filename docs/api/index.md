@@ -8,7 +8,11 @@
 
 ::: sparjax.envs.types
 
+::: sparjax.envs.registry
+
 ::: sparjax.envs.batch
+
+::: sparjax.envs.subprocess
 
 ::: sparjax.envs.loop
 

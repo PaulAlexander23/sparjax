@@ -52,8 +52,11 @@ nav:
   - Design:
       - Project brief: design/brief.md
       - Implementation plan: design/plan.md
+  - Guide:
+      - Environments, workers and GPUs: guide/environments.md
   - Experiments:
       - CFR opponents on Leduc: experiments/cfr-leduc.md
       - PPO vs fixed opponents in Kuhn: experiments/kuhn-ppo.md
       - PPO vs CFR opponents in Leduc: experiments/leduc-ppo.md
+      - Sebulba speed-ups on Go 9x9: experiments/go-sebulba.md
   - API reference: api/index.md

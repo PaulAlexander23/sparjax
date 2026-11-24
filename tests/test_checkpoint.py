@@ -17,7 +17,7 @@ from sparjax.config import TrainConfig
 def test_round_trip(tmp_path: Path) -> None:
     graphdef, params = init_actor_critic(5, 3, (8, 4), seed=1)
     path = save_checkpoint(
-        tmp_path / "c" / "x.npz", params, obs_dim=5, num_actions=3, hidden=(8, 4), meta={"a": 1}
+        tmp_path / "c" / "x.npz", params, obs_shape=5, num_actions=3, hidden=(8, 4), meta={"a": 1}
     )
     ckpt = load_checkpoint(path)
     assert ckpt.meta == {"a": 1}
@@ -47,5 +47,5 @@ def test_rejects_foreign_npz(tmp_path: Path) -> None:
 
 def test_config_to_dict_is_json_friendly() -> None:
     d = config_to_dict(TrainConfig())
-    assert d["env"]["game"] == "kuhn_poker"
+    assert d["env"]["id"] == "openspiel:kuhn_poker"
     assert d["log_dir"] is None

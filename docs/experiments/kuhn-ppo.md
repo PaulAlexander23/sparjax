@@ -9,7 +9,7 @@ do better on average.
 Reproduce a row with:
 
 ```bash
-uv run sparjax train --env.game kuhn_poker --opponent.kind cfr --opponent.cfr-iters 5 \
+uv run sparjax train --env.id openspiel:kuhn_poker --opponent.kind cfr --opponent.cfr-iters 5 \
     --opponent.cfr-algorithm cfr --total-timesteps 500000
 ```
 
@@ -64,7 +64,7 @@ the same local optimum as the constant 0.01 default. Starting at 0.1 and decayin
 the exact best response.
 
 ```bash
-uv run sparjax train --env.game kuhn_poker --opponent.kind cfr --opponent.cfr-iters 20 \
+uv run sparjax train --env.id openspiel:kuhn_poker --opponent.kind cfr --opponent.cfr-iters 20 \
     --opponent.cfr-algorithm cfr --total-timesteps 2000000 \
     --ppo.update.ent-coef 0.1 --ppo.ent-coef-end 0.0 --ppo.ent-decay-frac 0.8
 ```

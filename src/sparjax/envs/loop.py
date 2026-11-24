@@ -99,7 +99,7 @@ class BatchedOpponentLoop:
         self._env_ids: np.ndarray = np.arange(n)
         self._learner_seat: np.ndarray = np.zeros(n, dtype=np.int64)
         self._to_move: np.ndarray = np.full(n, -1, dtype=np.int64)
-        self._obs: np.ndarray = np.zeros((n, *batch.obs_shape), dtype=np.float32)
+        self._obs: np.ndarray = np.zeros((n, *batch.obs_shape), dtype=batch.obs_dtype)
         self._mask: np.ndarray = np.zeros((n, batch.num_actions), dtype=np.int8)
         self._info: list[str] = [""] * n
         self._env_opponent: list[OpponentId] = [""] * n

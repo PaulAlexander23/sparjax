@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1–M5 complete; plan to be reassessed.**
+> Status as of 2026-11-24: **M1–M6 complete; next steps to be decided (see M7).**
 
 ## Guiding rules
 
@@ -163,17 +163,31 @@ on the Leduc PPO experiment page.
 
 ---
 
-## M6: Subprocess env workers
+## M6: Go 9×9, subprocess workers and Sebulba speed-ups
 
-1. `SubprocessAECBatch`: K worker processes, each owning a slice of envs and speaking the `AECBatch` protocol over pipes with shared-memory obs buffers.
-2. Spawn-safe env factories (pickled constructor + kwargs). The opponent stays in the actor process.
-3. Tests: in-process and subprocess batches produce identical trajectories under the same seeds; workers shut down cleanly when killed.
-4. A benchmark doc comparing steps/s for threads only and for subprocess workers.
+*Redefined on 2026-11-24:* the goal became demonstrating the architecture's performance
+(concurrent acting and learning, parallel env stepping) on an environment that is
+expensive to step: PettingZoo `classic/go-v5`, 9×9.
+
+1. Env registry (`openspiel:<game>`, `pettingzoo:<id>` via `pettingzoo.make`) with picklable `EnvSpec`s.
+2. `SubprocessAECBatch`: spawn-started workers behind the `AECBatch` protocol; bit-identical to in-process under the same seeds.
+3. CNN torso option; boolean observations kept compact until the network.
+4. Timing metrics (learner wait/update, actor param-wait/collect) and `benchmarks/throughput.py`.
+5. A `cuda12-pascal` extra: cuDNN ≥ 9.11 can no longer run convolutions on the dev machine's GTX 1080.
+
+*Outcome:* done. Subprocess workers give 4.4× (2.3k → 10.2k decisions/s). Concurrent acting
+and learning gives +37% to +60%, matching the collect + update vs max(collect, update) model,
+but **only with actors on the CPU**. With GPU actors the learner's update blocks their
+inference and the gain is +4%. A 3M-step Go run finishes 1.39× faster with `max_lag = 1`, and
+PPO beats a random Go player 98% of the time after about 4 minutes. Details are on the Go
+experiment page.
 
 ---
 
 ## M7: Extensions (ordered by interest, decided later)
 
+- Playing-based evaluator (win/draw/loss with confidence intervals against held-out opponents) for non-OpenSpiel envs, and a stronger scripted Go opponent.
+- Correct bootstrapping of truncated episodes (needs the pre-reset final observation).
 - `NeuralOpponent` + `SnapshotPoolProvider` (latest / uniform FSP / PFSP): self-play as an opponent provider.
 - More PettingZoo envs through the adapter (Connect Four, Texas Hold'em) and an "add your own env" guide.
 - Recurrent policy; W&B logger backend; multiple learner devices.

@@ -20,7 +20,8 @@ Requires [uv](https://docs.astral.sh/uv/) and Python ≥ 3.12.
 
 ```bash
 uv sync                      # CPU JAX + dev tools
-uv sync --extra cuda12       # CUDA 12 JAX instead
+uv sync --extra cuda12          # CUDA 12 JAX instead
+uv sync --extra cuda12-pascal   # CUDA 12 on GTX 10xx (pins a Pascal-capable cuDNN)
 ```
 
 | Task | Command |

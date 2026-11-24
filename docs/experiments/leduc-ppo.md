@@ -15,7 +15,7 @@ linearly to 0 over the first 80% of training. Everything ran on a desktop CPU at
 9–10k learner decisions per second per run, with four or five runs at a time.
 
 ```bash
-uv run sparjax train --env.game leduc_poker --env.num-envs 128 --ppo.hidden 128 128 \
+uv run sparjax train --env.id openspiel:leduc_poker --env.num-envs 128 --ppo.hidden 128 128 \
     --opponent.kind cfr --opponent.cfr-iters 20 \
     --ppo.update.ent-coef 0.2 --ppo.ent-coef-end 0.0 --ppo.ent-decay-frac 0.8 \
     --total-timesteps 20000000 --log-dir runs/leduc_cfr20
