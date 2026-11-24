@@ -1,7 +1,7 @@
 # Project Brief: training PPO against arbitrary opponents on a Sebulba architecture
 
 > Status: **v2, decisions settled (2026-11-24).** The project is named **sparjax**. See §12
-> for the outcome of each decision and [PLAN.md](PLAN.md) for the implementation plan.
+> for the outcome of each decision and [the plan](plan.md) for the implementation plan.
 >
 > **Changes since v1**
 > - The focus is now **training against configurable opponents** (fixed CFR bots, scripted
@@ -148,9 +148,11 @@ threads won't scale linearly. Options:
 ```python
 class Opponent(Protocol):
     def act(self, batch: OpponentBatch, rng: np.random.Generator) -> np.ndarray: ...
+
     # OpponentBatch: obs tensors, action masks, and optional per-env info (e.g. info-state keys)
 
-class OpponentProvider(Protocol):          # decides WHO we play next
+
+class OpponentProvider(Protocol):  # decides WHO we play next
     def next_opponent(self, actor_id: int) -> tuple[OpponentId, Opponent]: ...
     def report(self, opponent_id: OpponentId, outcome: float) -> None: ...
 ```

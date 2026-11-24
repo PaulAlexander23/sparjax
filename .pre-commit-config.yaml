@@ -1,0 +1,32 @@
+# Mirrors CI. Install with: uv run pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+        args: [--unsafe]  # mkdocs.yml uses custom tags in some setups
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  # Use the project's own pinned tool versions via uv rather than separate hook envs.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: basedpyright
+        name: basedpyright
+        entry: uv run basedpyright
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
