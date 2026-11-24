@@ -3,6 +3,7 @@
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
 > Status as of 2026-11-24: **M1–M7b complete; remaining extensions listed under M7.**
+> Results, lessons and future directions are collected in [Findings](../findings.md).
 
 ## Guiding rules
 
@@ -210,9 +211,12 @@ self-play experiment page).
 
 ## M7: Extensions (ordered by interest, decided later)
 
-- Stronger self-play: snapshot less often (closer-to-converged best responses), NFSP/PSRO-style average policies, Go self-play.
+- Stronger self-play: snapshot less often (closer-to-converged best responses), constant-entropy sweeps and longer runs, NFSP/PSRO-style average policies, Go self-play.
 - More PettingZoo envs through the adapter (Connect Four, Texas Hold'em) and an "add your own env" guide.
-- Recurrent policy; W&B logger backend; multiple learner devices.
+- Recurrent policy; W&B logger backend; multiple learner devices (`shard_map`).
+- Move the docs to Zensical before Material for MkDocs reaches end of life (2027-05-05).
+
+See [Findings](../findings.md#future-directions) for the reasoning behind this order.
 
 ---
 

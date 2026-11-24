@@ -49,6 +49,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Findings and future directions: findings.md
   - Design:
       - Project brief: design/brief.md
       - Implementation plan: design/plan.md

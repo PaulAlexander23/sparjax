@@ -11,8 +11,25 @@ sparjax trains PPO agents in two-player, turn-based games that use the
 **Sebulba** actor–learner architecture. The opponent is pluggable: a CFR policy, a
 scripted bot, a frozen network, or a pool of the agent's own past snapshots.
 
-> **Status: pre-alpha.** See the [project brief](docs/design/brief.md) and the
-> [implementation plan](docs/design/plan.md).
+> **Status: research prototype.** Milestones M1–M7b are complete. See
+> [Findings and future directions](docs/findings.md) for results and lessons, the
+> [project brief](docs/design/brief.md) for the design, and the
+> [docs site](https://paulalexander23.github.io/sparjax/) for experiments and the API.
+
+Highlights:
+
+- PPO reaches ≥80% of the exact best-response value against CFR+ opponents on Leduc poker.
+- On Go 9x9, subprocess env workers give 4.4× throughput, and acting while the learner
+  updates gives another 37–60%.
+- Fictitious self-play on Leduc cuts the pool's exploitability from 2.15 to 0.89 chips per hand.
+
+## Quick start
+
+```bash
+uv sync
+uv run sparjax train --env.id openspiel:leduc_poker --opponent.kind cfr --opponent.cfr-iters 10
+uv run sparjax train --help
+```
 
 ## Development
 
