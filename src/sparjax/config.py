@@ -17,6 +17,7 @@ __all__ = [
     "OpponentConfig",
     "PPOConfig",
     "ScriptedOpponentName",
+    "SelfPlayConfig",
     "TrainConfig",
 ]
 
@@ -45,19 +46,38 @@ class EnvConfig:
 
 
 @dataclass(frozen=True)
+class SelfPlayConfig:
+    """Snapshot-pool settings, used when ``opponent.kind == "selfplay"``."""
+
+    sampler: Literal["latest", "uniform", "pfsp"] = "uniform"
+    """``latest``: naive self-play. ``uniform``: fictitious self-play.
+    ``pfsp``: prioritised FSP (favour snapshots the learner loses to)."""
+    snapshot_every: int = 10
+    """Add the learner's parameters to the pool every this many updates."""
+    pool_size: int = 1000
+    """Maximum number of snapshots kept (oldest evicted first)."""
+    latest_prob: float = 0.0
+    """Probability of playing the newest snapshot regardless of the sampler."""
+    pfsp_power: float = 2.0
+    """PFSP weighting exponent: weight = (1 - learner win rate) ** power."""
+
+
+@dataclass(frozen=True)
 class OpponentConfig:
     """The opponent the learner trains against."""
 
-    kind: Literal["random", "cfr", "policy", "go_light"] = "random"
+    kind: Literal["random", "cfr", "policy", "go_light", "selfplay"] = "random"
     """``random``: uniform over legal actions. ``cfr``: solve with CFR at start-up.
     ``policy``: load a tabular policy written by ``sparjax cfr-solve``.
-    ``go_light``: Go "light playout" (random, but never fills own eyes or passes early)."""
+    ``go_light``: Go "light playout" (random, but never fills own eyes or passes early).
+    ``selfplay``: frozen snapshots of the learner itself (see ``selfplay``)."""
     cfr_iters: int = 20
     """CFR iterations when ``kind == "cfr"``."""
     cfr_algorithm: Literal["cfr", "cfr_plus"] = "cfr_plus"
     """CFR variant when ``kind == "cfr"``."""
     policy_path: Path | None = None
     """Tabular policy file when ``kind == "policy"``."""
+    selfplay: SelfPlayConfig = field(default_factory=SelfPlayConfig)
 
 
 @dataclass(frozen=True)

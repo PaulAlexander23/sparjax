@@ -83,7 +83,11 @@ class Train:
     def run(self) -> TrainResult:
         """Build everything from the config and train."""
         from sparjax.agents.ppo.system import train  # heavy imports
-        from sparjax.eval.exact import evaluate_exact, network_to_tabular
+        from sparjax.eval.exact import (
+            evaluate_exact,
+            mixture_exploitability,
+            network_to_tabular,
+        )
         from sparjax.eval.play import play_games
         from sparjax.experiment import (
             make_env_fn,
@@ -92,12 +96,13 @@ class Train:
             make_scripted_opponent,
         )
         from sparjax.opponents.cfr import best_response_report
+        from sparjax.opponents.selfplay import SnapshotPoolProvider
 
         cfg = self.config
         game = cfg.env.spec.openspiel_game
         spec = make_opponent(cfg.opponent, game)
         table = spec.table
-        exact = self.exact_eval and game is not None and table is not None
+        exact = self.exact_eval and game is not None
         ceiling = best_response_report(table).mean_best_response if exact and table else None
         header = [
             f"env={cfg.env.id}",
@@ -109,6 +114,8 @@ class Train:
         print(" ".join(h for h in header if h))
 
         eval_opponents = {n: make_scripted_opponent(n) for n in cfg.eval.opponents}
+        snapshot_tables: dict[str, Any] = {}
+        provider = make_provider(spec, cfg.opponent, seed=cfg.seed)
 
         def on_update(update: int, graphdef: Any, params: Any) -> dict[str, float]:
             metrics: dict[str, float] = {}
@@ -123,9 +130,20 @@ class Train:
                     seed=cfg.seed + update,
                 )
                 metrics.update(report.as_metrics(f"play/{name}"))
-            if game is None or table is None or ceiling is None:
+            if game is None or not self.exact_eval:
                 return metrics
             learned = network_to_tabular(graphdef, params, game)
+            if table is None or ceiling is None:  # self-play: no fixed opponent to score
+                metrics["eval/exploitability"] = best_response_report(learned).exploitability
+                if isinstance(provider, SnapshotPoolProvider):
+                    snaps = provider.snapshots()
+                    tables: list[Any] = []
+                    for sid, _, sparams in snaps:
+                        if sid not in snapshot_tables:  # snapshots are frozen: cache them
+                            snapshot_tables[sid] = network_to_tabular(graphdef, sparams, game)
+                        tables.append(snapshot_tables[sid])
+                    metrics["eval/pool_exploitability"] = mixture_exploitability(tables)
+                return metrics
             ev = evaluate_exact(learned, table)
             return metrics | {
                 "eval/payoff": ev.mean_payoff,
@@ -142,10 +160,11 @@ class Train:
         if cfg.log_dir is not None:
             loggers.append(JsonlLogger(cfg.log_dir / "metrics.jsonl"))
         hook = on_update if exact or eval_opponents else None
-        return train(cfg, make_env_fn(cfg), make_provider(spec), MultiLogger(loggers), hook)
+        return train(cfg, make_env_fn(cfg), provider, MultiLogger(loggers), hook)
 
 
 _CONSOLE_KEYS = [
+    "selfplay/pool_size",
     "train/return_mean",
     "train/win_rate",
     "play/random/win_rate",
@@ -153,6 +172,7 @@ _CONSOLE_KEYS = [
     "eval/payoff",
     "eval/gap_to_ceiling",
     "eval/exploitability",
+    "eval/pool_exploitability",
     "loss/entropy",
     "ppo/approx_kl",
     "perf/sps",

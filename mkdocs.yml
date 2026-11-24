@@ -49,6 +49,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Findings and future directions: findings.md
   - Design:
       - Project brief: design/brief.md
       - Implementation plan: design/plan.md
@@ -59,4 +60,5 @@ nav:
       - PPO vs fixed opponents in Kuhn: experiments/kuhn-ppo.md
       - PPO vs CFR opponents in Leduc: experiments/leduc-ppo.md
       - Sebulba speed-ups on Go 9x9: experiments/go-sebulba.md
+      - Self-play on Leduc: experiments/selfplay-leduc.md
   - API reference: api/index.md

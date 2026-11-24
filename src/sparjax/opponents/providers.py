@@ -10,7 +10,7 @@ import numpy as np
 
 from sparjax.opponents.base import Opponent, OpponentId
 
-__all__ = ["FixedProvider", "MixtureEntry", "MixtureProvider", "OutcomeStats"]
+__all__ = ["FixedProvider", "MixtureEntry", "MixtureProvider", "OutcomeStats", "StatsMixin"]
 
 
 @dataclass(slots=True)
@@ -20,6 +20,13 @@ class OutcomeStats:
     games: int = 0
     total: float = 0.0
     total_sq: float = 0.0
+    wins: int = 0
+    """Games with a strictly positive payoff for the learner."""
+
+    @property
+    def win_rate(self) -> float:
+        """Fraction of games the learner won (0.5 if no games yet)."""
+        return self.wins / self.games if self.games else 0.5
 
     @property
     def mean(self) -> float:
@@ -39,12 +46,14 @@ class OutcomeStats:
         self.games += 1
         self.total += outcome
         self.total_sq += outcome * outcome
+        self.wins += int(outcome > 0)
 
 
-class _StatsMixin:
+class StatsMixin:
     """Thread-safe outcome bookkeeping shared by providers."""
 
     def __init__(self) -> None:
+        """Start with no recorded games."""
         self._lock: threading.Lock = threading.Lock()
         self._stats: dict[OpponentId, OutcomeStats] = {}
 
@@ -56,10 +65,13 @@ class _StatsMixin:
     def stats(self) -> dict[OpponentId, OutcomeStats]:
         """Snapshot of the per-opponent statistics."""
         with self._lock:
-            return {k: OutcomeStats(v.games, v.total, v.total_sq) for k, v in self._stats.items()}
+            return {
+                k: OutcomeStats(v.games, v.total, v.total_sq, v.wins)
+                for k, v in self._stats.items()
+            }
 
 
-class FixedProvider(_StatsMixin):
+class FixedProvider(StatsMixin):
     """Always returns the same opponent."""
 
     def __init__(self, opponent: Opponent, opponent_id: OpponentId = "fixed") -> None:
@@ -83,7 +95,7 @@ class MixtureEntry:
     weight: float
 
 
-class MixtureProvider(_StatsMixin):
+class MixtureProvider(StatsMixin):
     """Samples an opponent from a fixed weighted list each time it is asked.
 
     Args:

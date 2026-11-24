@@ -8,13 +8,21 @@ from sparjax.agents.ppo.loss import PPOHyperparams
 from sparjax.agents.ppo.system import train
 from sparjax.checkpoint import load_checkpoint
 from sparjax.cli import main
-from sparjax.config import ArchConfig, EnvConfig, OpponentConfig, PPOConfig, TrainConfig
+from sparjax.config import (
+    ArchConfig,
+    EnvConfig,
+    OpponentConfig,
+    PPOConfig,
+    SelfPlayConfig,
+    TrainConfig,
+)
 from sparjax.envs.openspiel_aec import OpenSpielAECEnv
 from sparjax.eval.exact import evaluate_exact, network_to_tabular
 from sparjax.experiment import make_env_fn, make_opponent, make_provider
 from sparjax.loggers import ConsoleLogger, JsonlLogger, MultiLogger, NullLogger
 from sparjax.opponents import FixedProvider, RandomOpponent
 from sparjax.opponents.cfr import solve_cfr
+from sparjax.opponents.selfplay import SnapshotPoolProvider
 
 KUHN_CEILING_VS_RANDOM = 0.4583333
 
@@ -286,3 +294,46 @@ def test_cli_train_pettingzoo_env(capsys: pytest.CaptureFixture[str]) -> None:
     assert "env=pettingzoo:classic/go-v5" in out
     assert "ceiling" not in out  # no exact evaluation outside OpenSpiel
     assert "train/win_rate" in out
+
+
+def test_selfplay_training_adds_snapshots_and_logs_pool() -> None:
+    cfg = small_cfg(
+        opponent=OpponentConfig(
+            "selfplay", selfplay=SelfPlayConfig(sampler="uniform", snapshot_every=2)
+        ),
+        total_timesteps=2 * 32 * 16 * 6,
+        log_every=3,
+    )
+    spec = make_opponent(cfg.opponent, "kuhn_poker")
+    provider = make_provider(spec, cfg.opponent)
+    assert isinstance(provider, SnapshotPoolProvider)
+    result = train(cfg, make_env_fn(cfg), provider)
+    assert provider.snapshot_ids() == [f"snapshot_{u:06d}" for u in (0, 2, 4, 6)]
+    assert result.history[-1]["selfplay/pool_size"] == 4
+
+
+def test_cli_selfplay_reports_pool_exploitability(tmp_path: Path) -> None:
+    main(
+        [
+            "train",
+            "--quiet",
+            "--env.num-envs",
+            "16",
+            "--arch.num-actors",
+            "1",
+            "--opponent.kind",
+            "selfplay",
+            "--opponent.selfplay.snapshot-every",
+            "1",
+            "--total-timesteps",
+            str(16 * 16 * 3),
+            "--log-every",
+            "3",
+            "--log-dir",
+            str(tmp_path),
+        ]
+    )
+    rows = [json.loads(r) for r in (tmp_path / "metrics.jsonl").read_text().splitlines()]
+    ev = [r for r in rows if "eval/pool_exploitability" in r]
+    assert ev
+    assert 0.0 <= ev[-1]["eval/pool_exploitability"] <= 1.0
