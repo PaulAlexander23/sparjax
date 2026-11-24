@@ -118,3 +118,20 @@ def test_update_rejects_indivisible_minibatches() -> None:
     update = make_update_fn(graphdef, optimizer, PPOHyperparams(num_minibatches=3))
     with pytest.raises(ValueError, match="divisible"):
         update(params, optimizer.init(params), make_batch(T=2, N=4), jax.random.key(0))
+
+
+def test_cnn_torso_shapes_and_validation() -> None:
+    graphdef, params = init_actor_critic((5, 5, 3), 26, (16,), seed=0, conv_channels=(4, 8))
+    obs = jnp.zeros((2, 3, 5, 5, 3), bool)  # extra batch dims, boolean planes
+    logits, values = apply(graphdef, params, obs, jnp.ones((2, 3, 26), bool))
+    assert logits.shape == (2, 3, 26)
+    assert values.shape == (2, 3)
+    with pytest.raises(ValueError, match="H x W x C"):
+        init_actor_critic(10, 3, (8,), seed=0, conv_channels=(4,))
+
+
+def test_mlp_flattens_multidimensional_observations() -> None:
+    graphdef, params = init_actor_critic((2, 3), 4, (8,), seed=0)
+    logits, values = apply(graphdef, params, jnp.ones((7, 2, 3)), jnp.ones((7, 4), bool))
+    assert logits.shape == (7, 4)
+    assert values.shape == (7,)

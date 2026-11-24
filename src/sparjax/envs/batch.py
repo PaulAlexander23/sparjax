@@ -81,6 +81,11 @@ class AECBatch(Protocol):
         """Size of the (shared, discrete) action space."""
         ...
 
+    @property
+    def obs_dtype(self) -> np.dtype[Any]:
+        """Dtype of observations: ``bool`` for boolean planes (e.g. Go), else ``float32``."""
+        ...
+
     def reset(self, env_ids: Int[np.ndarray, " n"], seeds: Int[np.ndarray, " n"]) -> BatchView:
         """Start new games in ``env_ids`` with the given seeds."""
         ...
@@ -133,6 +138,11 @@ class InProcessAECBatch:
         if hasattr(obs_space, "spaces") and "observation" in obs_space.spaces:
             obs_space = obs_space.spaces["observation"]
         self._obs_shape: tuple[int, ...] = tuple(obs_space.shape)
+        # Keep boolean planes compact (4x less data to copy or send between processes);
+        # the network casts to float.
+        self._obs_dtype: np.dtype[Any] = np.dtype(
+            np.bool_ if np.dtype(obs_space.dtype) == np.bool_ else np.float32
+        )
 
     # ------------------------------------------------------------------ properties
     @property
@@ -154,6 +164,11 @@ class InProcessAECBatch:
     def num_actions(self) -> int:
         """Size of the discrete action space."""
         return self._num_actions
+
+    @property
+    def obs_dtype(self) -> np.dtype[Any]:
+        """Dtype of observations."""
+        return self._obs_dtype
 
     @property
     def envs(self) -> Sequence[AECEnv[Any, Any, Any]]:
@@ -202,7 +217,7 @@ class InProcessAECBatch:
         return BatchView(
             env_ids=env_ids,
             to_move=np.full(n, -1, dtype=np.int64),
-            observations=np.zeros((n, *self._obs_shape), dtype=np.float32),
+            observations=np.zeros((n, *self._obs_shape), dtype=self._obs_dtype),
             action_masks=np.zeros((n, self._num_actions), dtype=np.int8),
             rewards=np.zeros((n, self.num_seats), dtype=np.float64),
             done=np.zeros(n, dtype=bool),
@@ -240,6 +255,6 @@ class InProcessAECBatch:
         agent = env.agent_selection
         obs, mask = _split_observation(env.observe(agent), env.infos[agent], self._num_actions)
         view.to_move[row] = self._seat[agent]
-        view.observations[row] = np.asarray(obs, dtype=np.float32).reshape(self._obs_shape)
+        view.observations[row] = np.asarray(obs, dtype=self._obs_dtype).reshape(self._obs_shape)
         view.action_masks[row] = np.asarray(mask, dtype=np.int8)
         view.info_states[row] = str(env.infos[agent].get("info_state", ""))

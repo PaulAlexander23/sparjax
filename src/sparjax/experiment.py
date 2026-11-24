@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from sparjax.config import OpponentConfig, TrainConfig
-from sparjax.envs.openspiel_aec import OpenSpielAECEnv
 from sparjax.opponents.base import Opponent
 from sparjax.opponents.providers import FixedProvider
 from sparjax.opponents.simple import RandomOpponent
@@ -22,21 +21,30 @@ class OpponentSpec:
 
     opponent_id: str
     opponent: Opponent
-    table: TabularPolicy
+    table: TabularPolicy | None
+    """Tabular form, available for OpenSpiel games (enables exact evaluation)."""
 
 
 def make_env_fn(cfg: TrainConfig) -> Callable[[], Any]:
-    """Factory for one environment of ``cfg.env.game``."""
-    game = cfg.env.game
-    return lambda: OpenSpielAECEnv(game)
+    """A picklable factory for one environment of ``cfg.env``."""
+    return cfg.env.spec
 
 
-def make_opponent(cfg: OpponentConfig, game: str) -> OpponentSpec:
-    """Build the opponent described by ``cfg`` for ``game``.
+def make_opponent(cfg: OpponentConfig, game: str | None) -> OpponentSpec:
+    """Build the opponent described by ``cfg``.
 
-    Every supported opponent is tabular (random play is the empty table, whose missing
-    states default to uniform), so the exact best-response ceiling is always computable.
+    Args:
+        cfg: Opponent configuration.
+        game: OpenSpiel game name, or ``None`` for non-OpenSpiel envs (where only the
+            random opponent is available and there is no tabular form).
+
+    For OpenSpiel games every supported opponent is tabular (random play is CFR's first
+    average policy), so the exact best-response ceiling is always computable.
     """
+    if game is None:
+        if cfg.kind != "random":
+            raise ValueError(f"opponent.kind={cfg.kind!r} needs an OpenSpiel env")
+        return OpponentSpec("random", RandomOpponent(), None)
     if cfg.kind == "random":
         from sparjax.opponents.cfr import solve_cfr  # optional dependency
 

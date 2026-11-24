@@ -8,6 +8,7 @@ from typing import Literal
 
 from sparjax.agents.ppo.loss import PPOHyperparams
 from sparjax.arch.devices import DeviceKind
+from sparjax.envs.registry import EnvSpec
 
 __all__ = ["ArchConfig", "EnvConfig", "OpponentConfig", "PPOConfig", "TrainConfig"]
 
@@ -16,10 +17,21 @@ __all__ = ["ArchConfig", "EnvConfig", "OpponentConfig", "PPOConfig", "TrainConfi
 class EnvConfig:
     """Which game to play and how many copies each actor runs."""
 
-    game: str = "kuhn_poker"
-    """OpenSpiel game short name (two-player, zero-sum, sequential)."""
+    id: str = "openspiel:kuhn_poker"
+    """``openspiel:<game>`` or ``pettingzoo:<id>`` (e.g. ``pettingzoo:classic/go-v5``)."""
+    kwargs: dict[str, int | float | bool | str] = field(
+        default_factory=dict[str, int | float | bool | str]
+    )
+    """Constructor keyword arguments, e.g. ``board_size 9`` for Go."""
     num_envs: int = 64
     """Environments per actor thread."""
+    num_workers: int = 0
+    """Subprocess env workers per actor (0 = step envs in the actor thread itself)."""
+
+    @property
+    def spec(self) -> EnvSpec:
+        """A picklable factory for one environment."""
+        return EnvSpec(self.id, dict(self.kwargs))
 
 
 @dataclass(frozen=True)
@@ -46,6 +58,9 @@ class PPOConfig:
     rollout_len: int = 16
     """Learner decisions per env per rollout."""
     hidden: tuple[int, ...] = (64, 64)
+    """MLP head widths."""
+    conv_channels: tuple[int, ...] = ()
+    """Channels of a shared 3x3 CNN torso for HxWxC observations (empty = MLP only)."""
     update: PPOHyperparams = field(default_factory=PPOHyperparams)
     ent_coef_end: float | None = None
     """If set, the entropy coefficient decays linearly from ``update.ent_coef`` to this."""

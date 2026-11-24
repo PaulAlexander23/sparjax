@@ -48,8 +48,9 @@ from sparjax.arch import (
 from sparjax.arch.evaluator import AsyncEvaluator
 from sparjax.checkpoint import config_to_dict, save_checkpoint
 from sparjax.config import TrainConfig
-from sparjax.envs.batch import InProcessAECBatch
+from sparjax.envs.batch import AECBatch, InProcessAECBatch
 from sparjax.envs.loop import BatchedOpponentLoop
+from sparjax.envs.subprocess import SubprocessAECBatch
 from sparjax.loggers import Logger, NullLogger
 from sparjax.opponents.base import OpponentProvider
 
@@ -67,6 +68,10 @@ class Rollout:
     batch: Batch  # numpy arrays, time-major
     episode_returns: list[float]
     episode_opponents: list[str]
+    param_wait_s: float = 0.0
+    """Time the actor spent blocked waiting for fresh enough parameters."""
+    collect_s: float = 0.0
+    """Time the actor spent collecting this rollout (acting + env stepping)."""
 
 
 @dataclass
@@ -111,7 +116,11 @@ def _actor(
     lifetime: Lifetime,
 ) -> None:
     device = resolve_device(cfg.arch.actor_device)
-    batch_env = InProcessAECBatch(env_fn, cfg.env.num_envs)
+    batch_env: AECBatch = (
+        SubprocessAECBatch(env_fn, cfg.env.num_envs, cfg.env.num_workers)
+        if cfg.env.num_workers > 0
+        else InProcessAECBatch(env_fn, cfg.env.num_envs)
+    )
     loop = BatchedOpponentLoop(
         batch_env, provider, actor_id=actor_id, seed=cfg.seed * 1000 + actor_id
     )
@@ -122,9 +131,11 @@ def _actor(
     obs_shape, A = batch_env.obs_shape, batch_env.num_actions
 
     for r in range(cfg.num_updates):
+        t0 = time.perf_counter()
         params, version = server.get(device, min_version=max(0, r - cfg.arch.max_lag))
+        t1 = time.perf_counter()
         loop.next_opponent()
-        obs = np.zeros((T, N, *obs_shape), np.float32)
+        obs = np.zeros((T, N, *obs_shape), batch_env.obs_dtype)
         mask = np.zeros((T, N, A), bool)
         actions = np.zeros((T, N), np.int32)
         log_probs = np.zeros((T, N), np.float32)
@@ -160,6 +171,8 @@ def _actor(
             batch=Batch(obs, mask, actions, log_probs, values, rewards, dones, np.asarray(last_v)),
             episode_returns=ep_returns,
             episode_opponents=ep_opps,
+            param_wait_s=t1 - t0,
+            collect_s=time.perf_counter() - t1,
         )
         pipeline.send(actor_id, rollout)
     batch_env.close()
@@ -189,10 +202,12 @@ def train(
     """
     logger = logger or NullLogger()
     probe = InProcessAECBatch(env_fn, 1)
-    obs_dim, num_actions = int(np.prod(probe.obs_shape)), probe.num_actions
+    obs_shape, num_actions = probe.obs_shape, probe.num_actions
     probe.close()
 
-    graphdef, params = init_actor_critic(obs_dim, num_actions, cfg.ppo.hidden, cfg.seed)
+    graphdef, params = init_actor_critic(
+        obs_shape, num_actions, cfg.ppo.hidden, cfg.seed, cfg.ppo.conv_channels
+    )
     learner_device = resolve_device(cfg.arch.learner_device)
     params = jax.device_put(params, learner_device)
     optimizer = optax.chain(
@@ -238,10 +253,11 @@ def train(
         save_checkpoint(
             cfg.log_dir / "checkpoints" / f"update_{update:06d}.npz",
             params,
-            obs_dim=obs_dim,
+            obs_shape=obs_shape,
             num_actions=num_actions,
             hidden=cfg.ppo.hidden,
-            meta={"update": update, "step": update * cfg.steps_per_update, "game": cfg.env.game},
+            conv_channels=cfg.ppo.conv_channels,
+            meta={"update": update, "step": update * cfg.steps_per_update, "env": cfg.env.id},
         )
 
     if cfg.log_dir is not None:
@@ -250,9 +266,15 @@ def train(
     window: list[float] = []
     start = last_log = time.perf_counter()
     last_logged_update = 0
+    timing = dict.fromkeys(
+        ["learner_wait_s", "learner_update_s", "actor_param_wait_s", "actor_collect_s"], 0.0
+    )
     try:
         for u in range(cfg.num_updates):
+            t_wait = time.perf_counter()
             rollouts: list[Rollout] = pipeline.collect()
+            t_update = time.perf_counter()
+            timing["learner_wait_s"] += t_update - t_wait
             batch = Batch(
                 *(
                     np.concatenate(xs, axis=1 if np.ndim(xs[0]) >= 2 else 0)
@@ -263,6 +285,11 @@ def train(
             key, sub = jax.random.split(key)
             ent_coef = cfg.ppo.ent_coef_at(u / cfg.num_updates)
             params, opt_state, metrics = update_fn(params, opt_state, batch, sub, ent_coef)
+            jax.block_until_ready(params)  # so the timing below is real, not async dispatch
+            timing["learner_update_s"] += time.perf_counter() - t_update
+            for r in rollouts:
+                timing["actor_param_wait_s"] += r.param_wait_s / len(rollouts)
+                timing["actor_collect_s"] += r.collect_s / len(rollouts)
             server.publish(params, version=u + 1)
             for r in rollouts:
                 window += r.episode_returns
@@ -275,8 +302,14 @@ def train(
                 row["perf/sps"] = cfg.steps_per_update * updates_since / max(now - last_log, 1e-9)
                 row["perf/elapsed_s"] = now - start
                 row["perf/param_lag"] = float(np.mean([u - r.param_version for r in rollouts]))
+                for name, total in timing.items():
+                    row[f"perf/{name}"] = total / updates_since  # mean seconds per update
+                timing = dict.fromkeys(timing, 0.0)
                 row["train/episodes"] = float(len(window))
                 row["train/return_mean"] = float(np.mean(window)) if window else float("nan")
+                outcomes = np.sign(np.asarray(window, dtype=np.float64))
+                row["train/win_rate"] = float(np.mean(outcomes > 0)) if window else float("nan")
+                row["train/draw_rate"] = float(np.mean(outcomes == 0)) if window else float("nan")
                 row["train/return_stderr"] = (
                     float(np.std(window, ddof=1) / np.sqrt(len(window)))
                     if len(window) > 1

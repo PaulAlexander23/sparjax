@@ -88,23 +88,26 @@ class Train:
         from sparjax.opponents.cfr import best_response_report
 
         cfg = self.config
-        spec = make_opponent(cfg.opponent, cfg.env.game)
-        ceiling = best_response_report(spec.table).mean_best_response
+        game = cfg.env.spec.openspiel_game
+        spec = make_opponent(cfg.opponent, game)
+        table = spec.table
+        exact = self.exact_eval and game is not None and table is not None
+        ceiling = best_response_report(table).mean_best_response if exact and table else None
         header = [
-            f"game={cfg.env.game}",
+            f"env={cfg.env.id}",
             f"opponent={spec.opponent_id}",
-            f"ceiling (best response, random seats)={ceiling:.4f}",
+            f"ceiling (best response, random seats)={ceiling:.4f}" if ceiling is not None else "",
             f"updates={cfg.num_updates}",
             f"steps/update={cfg.steps_per_update}",
         ]
-        print(" ".join(header))
+        print(" ".join(h for h in header if h))
 
         def on_update(update: int, graphdef: Any, params: Any) -> dict[str, float]:
             del update
-            if not self.exact_eval:
+            if game is None or table is None or ceiling is None:
                 return {}
-            table = network_to_tabular(graphdef, params, cfg.env.game)
-            ev = evaluate_exact(table, spec.table)
+            learned = network_to_tabular(graphdef, params, game)
+            ev = evaluate_exact(learned, table)
             return {
                 "eval/payoff": ev.mean_payoff,
                 "eval/payoff_seat0": ev.payoff_vs_opponent[0],
@@ -119,11 +122,13 @@ class Train:
             loggers.append(ConsoleLogger(_CONSOLE_KEYS))
         if cfg.log_dir is not None:
             loggers.append(JsonlLogger(cfg.log_dir / "metrics.jsonl"))
-        return train(cfg, make_env_fn(cfg), make_provider(spec), MultiLogger(loggers), on_update)
+        hook = on_update if exact else None
+        return train(cfg, make_env_fn(cfg), make_provider(spec), MultiLogger(loggers), hook)
 
 
 _CONSOLE_KEYS = [
     "train/return_mean",
+    "train/win_rate",
     "eval/payoff",
     "eval/gap_to_ceiling",
     "eval/exploitability",
