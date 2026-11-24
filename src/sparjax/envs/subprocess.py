@@ -220,8 +220,11 @@ class SubprocessAECBatch:
         done = np.empty(n, dtype=bool)
         truncated = np.empty(n, dtype=bool)
         info_states = [""] * n
+        finals: dict[int, np.ndarray] = {}
         for w, rows in rows_by_worker.items():
             part = parts[w]
+            for local_row, final in part.final_observations.items():
+                finals[int(rows[local_row])] = final
             to_move[rows] = part.to_move
             obs[rows] = part.observations
             masks[rows] = part.action_masks
@@ -230,4 +233,6 @@ class SubprocessAECBatch:
             truncated[rows] = part.truncated
             for row, info in zip(rows, part.info_states, strict=True):
                 info_states[row] = info
-        return BatchView(env_ids, to_move, obs, masks, rewards, done, truncated, info_states)
+        return BatchView(
+            env_ids, to_move, obs, masks, rewards, done, truncated, info_states, finals
+        )

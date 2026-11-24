@@ -72,6 +72,8 @@ class LearnerStep:
     truncated: Bool[np.ndarray, " n"]
     learner_seats: Int[np.ndarray, " n"]
     episodes: list[EpisodeRecord] = field(default_factory=list[EpisodeRecord])
+    final_observations: dict[int, np.ndarray] = field(default_factory=dict[int, np.ndarray])
+    """For envs with ``truncated[i]``: the learner's observation of the cut-off position."""
 
 
 class BatchedOpponentLoop:
@@ -211,6 +213,9 @@ class BatchedOpponentLoop:
             if self._episode_decisions[i] > 0:
                 acc.dones[i] = True
                 acc.truncated[i] = truncated
+                final = view.final_observations.get(int(row)) if truncated else None
+                if final is not None:
+                    acc.final_obs[i] = final[self._learner_seat[i]]
             else:
                 self.skipped_episodes += 1
                 self._carry[i] = 0.0  # no learner transition to credit
@@ -252,6 +257,7 @@ class BatchedOpponentLoop:
             truncated=acc.truncated,
             learner_seats=self._learner_seat.copy(),
             episodes=acc.episodes,
+            final_observations=acc.final_obs,
         )
 
 
@@ -263,3 +269,4 @@ class _Accumulator:
         self.dones: np.ndarray = np.zeros(n, dtype=bool)
         self.truncated: np.ndarray = np.zeros(n, dtype=bool)
         self.episodes: list[EpisodeRecord] = []
+        self.final_obs: dict[int, np.ndarray] = {}

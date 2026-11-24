@@ -60,3 +60,31 @@ cuDNN 9.11 and later can no longer run convolutions on Pascal GPUs (you get
 `CUDNN_STATUS_EXECUTION_FAILED` / status 5003 during autotuning). The `cuda12-pascal`
 extra pins `nvidia-cudnn-cu12==9.10.2.21`, the last version that works. MLP-only models
 are unaffected either way.
+
+## Truncated games
+
+`--env.max-steps N` cuts every game off after `N` actions (`MaxStepsWrapper`). A cut-off
+game is reported as *truncated*, not terminated. The actor then bootstraps the return with
+the value of the final position (reward + γ·V(final observation)), so a long game cut short
+is not mistaken for a draw. The batch records each seat's final observation for exactly this
+purpose.
+
+## Opponents and evaluation outside OpenSpiel
+
+Exact evaluation needs OpenSpiel's game tree. For any other env, evaluate by playing:
+
+```bash
+uv run sparjax train --env.id pettingzoo:classic/go-v5 --env.kwargs board_size 9 \
+    --opponent.kind go_light --eval.opponents random go_light --eval.games 200 ...
+```
+
+At every log step (in the background evaluator thread) the network plays `--eval.games`
+games against each listed opponent and logs `play/<name>/win_rate`, draw/loss rates, the
+mean return with a 95% confidence interval, and win rates per seat.
+
+Built-in scripted opponents:
+
+| name | behaviour |
+|---|---|
+| `random` | uniform over legal actions |
+| `go_light` | Go "light playout": random, but never fills its own single-point eyes and never passes while another move is legal. Beats `random` about 90% of the time on 9×9 |

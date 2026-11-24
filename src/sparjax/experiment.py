@@ -8,11 +8,18 @@ from typing import Any
 
 from sparjax.config import OpponentConfig, TrainConfig
 from sparjax.opponents.base import Opponent
+from sparjax.opponents.go import GoLightPlayoutOpponent
 from sparjax.opponents.providers import FixedProvider
 from sparjax.opponents.simple import RandomOpponent
 from sparjax.opponents.tabular import TabularPolicy, TabularPolicyOpponent
 
-__all__ = ["OpponentSpec", "make_env_fn", "make_opponent"]
+__all__ = [
+    "OpponentSpec",
+    "make_env_fn",
+    "make_opponent",
+    "make_provider",
+    "make_scripted_opponent",
+]
 
 
 @dataclass(frozen=True)
@@ -41,6 +48,8 @@ def make_opponent(cfg: OpponentConfig, game: str | None) -> OpponentSpec:
     For OpenSpiel games every supported opponent is tabular (random play is CFR's first
     average policy), so the exact best-response ceiling is always computable.
     """
+    if cfg.kind == "go_light":
+        return OpponentSpec("go_light", GoLightPlayoutOpponent(), None)
     if game is None:
         if cfg.kind != "random":
             raise ValueError(f"opponent.kind={cfg.kind!r} needs an OpenSpiel env")
@@ -63,6 +72,15 @@ def make_opponent(cfg: OpponentConfig, game: str | None) -> OpponentSpec:
     if table.game_name != game:
         raise ValueError(f"policy is for {table.game_name}, not {game}")
     return OpponentSpec(cfg.policy_path.stem, TabularPolicyOpponent(table), table)
+
+
+def make_scripted_opponent(name: str) -> Opponent:
+    """A scripted opponent by name (``random`` or ``go_light``)."""
+    if name == "random":
+        return RandomOpponent()
+    if name == "go_light":
+        return GoLightPlayoutOpponent()
+    raise ValueError(f"unknown scripted opponent {name!r}")
 
 
 def make_provider(spec: OpponentSpec) -> FixedProvider:

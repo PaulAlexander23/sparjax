@@ -44,10 +44,12 @@ class EnvSpec:
     Attributes:
         id: ``"openspiel:<game>"`` or ``"pettingzoo:<registered id>"``.
         kwargs: Keyword arguments for the environment constructor.
+        max_steps: If set, truncate each game after this many actions (any agent).
     """
 
     id: str
     kwargs: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    max_steps: int | None = None
 
     def __post_init__(self) -> None:
         """Validate the id eagerly so mistakes surface before any worker starts."""
@@ -70,6 +72,14 @@ class EnvSpec:
 
     def __call__(self) -> AECEnv[Any, Any, Any]:
         """Build a fresh environment."""
+        env = self._build()
+        if self.max_steps is not None:
+            from sparjax.envs.wrappers import MaxStepsWrapper
+
+            env = MaxStepsWrapper(env, self.max_steps)
+        return env
+
+    def _build(self) -> AECEnv[Any, Any, Any]:
         if self.backend == "openspiel":
             from sparjax.envs.openspiel_aec import OpenSpielAECEnv  # optional dependency
 
