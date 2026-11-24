@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1–M6 complete; next steps to be decided (see M7).**
+> Status as of 2026-11-24: **M1–M7a complete; M7b (self-play) next.**
 
 ## Guiding rules
 
@@ -184,10 +184,19 @@ experiment page.
 
 ---
 
+## M7a: Truncation, playing-based evaluation, stronger Go opponent
+
+*Outcome:* done.
+- `--env.max-steps` truncation with value bootstrapping from each seat's final observation.
+- `eval.play.play_games` and `--eval.opponents`: win/draw/loss with 95% CIs for any env.
+- `go_light` light-playout opponent (90.5% vs random).
+
+PPO on Go 9x9 beats `go_light` 97% of the time after 1.8M decisions and peaks at 99.5%.
+
+---
+
 ## M7: Extensions (ordered by interest, decided later)
 
-- Playing-based evaluator (win/draw/loss with confidence intervals against held-out opponents) for non-OpenSpiel envs, and a stronger scripted Go opponent.
-- Correct bootstrapping of truncated episodes (needs the pre-reset final observation).
 - `NeuralOpponent` + `SnapshotPoolProvider` (latest / uniform FSP / PFSP): self-play as an opponent provider.
 - More PettingZoo envs through the adapter (Connect Four, Texas Hold'em) and an "add your own env" guide.
 - Recurrent policy; W&B logger backend; multiple learner devices.
