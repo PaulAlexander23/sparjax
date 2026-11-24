@@ -1,8 +1,8 @@
 # sparjax: Implementation Plan
 
-> Companion to [PROJECT_BRIEF.md](PROJECT_BRIEF.md) (the *why*). This file is the *what and
+> Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1 not started.**
+> Status as of 2026-11-24: **M1 complete (PR open); M2 next.**
 
 ## Guiding rules
 
@@ -23,20 +23,27 @@
 # envs/batch.py: the boundary that subprocess workers will implement later
 class AECBatch(Protocol):
     num_envs: int
+
     def reset(self, env_ids: IntArray, seeds: IntArray) -> BatchView: ...
     def step(self, env_ids: IntArray, actions: IntArray) -> BatchView: ...
+
     # One AEC step for each selected env. The return covers only those envs:
     #   to_move[i]          seat whose turn it is now
     #   obs[i], mask[i]     observation and action mask for that seat
     #   rewards[i, seat]    reward accrued since the previous call, for each seat
     #   done[i]             game over (termination or truncation)
     #   info_state[i]       optional str key (used by tabular opponents)
+
+
 # Implementations: InProcessAECBatch (M3), SubprocessAECBatch (M6).
 # Each call costs one message per worker, so it works over pipes too.
+
 
 # opponents/base.py
 class Opponent(Protocol):
     def act(self, batch: OpponentBatch, rng: np.random.Generator) -> IntArray: ...
+
+
 class OpponentProvider(Protocol):
     def next_opponent(self, actor_id: int) -> tuple[OpponentId, Opponent]: ...
     def report(self, opponent_id: OpponentId, outcome: float) -> None: ...
@@ -50,7 +57,7 @@ class OpponentProvider(Protocol):
 
 1. `git init`, `.gitignore`, `LICENSE` (Apache-2.0), `NOTICE` (Stoix + Mava attribution placeholder), `README.md`.
 2. `pyproject.toml`:
-   - `name = "sparjax"`, `requires-python = ">=3.12"`, `src/` layout, `uv_build` backend, version in `sparjax/__init__.py`.
+   - `name = "sparjax"`, `requires-python = ">=3.12"`, `src/` layout, `uv_build` backend; version is static in `pyproject.toml` (uv_build has no dynamic versions) and read through `importlib.metadata`.
    - Runtime deps (kept minimal for now): `jax`, `numpy`. Others are added in the milestone that first needs them.
    - Extras: `cuda12 = ["jax[cuda12]"]`. Later: `openspiel`, `wandb`.
    - Dependency groups: `dev` (ruff, basedpyright, pytest, pytest-cov, pre-commit) and `docs` (mkdocs-material, mkdocstrings[python]).
@@ -153,7 +160,8 @@ class OpponentProvider(Protocol):
 
 | Risk | Mitigation |
 |---|---|
-| The GTX 1080 isn't supported by current JAX CUDA wheels | Develop on CPU; poker networks are tiny |
+| ~~The GTX 1080 isn't supported by current JAX CUDA wheels~~ | **Resolved in M1:** `jax[cuda12]` 0.12.1 runs on the GTX 1080 |
+| Material for MkDocs reaches end of life on 2027-05-05 (its successor, Zensical, reads `mkdocs.yml`) | Keep MkDocs for now; trial Zensical before EOL |
 | The GIL caps actor-thread throughput | Expected; M6 subprocess workers |
 | No `pyspiel` type stubs | Confine it to two modules; type ignores allowed only there |
 | JAX API churn (`shard_map` moved from `jax.experimental`) | Pin minimum versions; one `arch/devices.py` compat module |

@@ -1,0 +1,55 @@
+site_name: sparjax
+site_description: PPO on a Sebulba actor-learner architecture against pluggable opponents.
+site_url: https://paulalexander23.github.io/sparjax/
+repo_url: https://github.com/PaulAlexander23/sparjax
+repo_name: PaulAlexander23/sparjax
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+
+nav:
+  - Home: index.md
+  - Design:
+      - Project brief: design/brief.md
+      - Implementation plan: design/plan.md
+  - API reference: api/index.md
