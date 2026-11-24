@@ -24,13 +24,14 @@ import pyspiel
 from flax import nnx
 from open_spiel.python import policy as os_policy
 from open_spiel.python.algorithms import exploitability as os_exploitability
+from open_spiel.python.algorithms import policy_aggregator
 from open_spiel.python.algorithms.expected_game_score import policy_value
 
 from sparjax.agents.ppo.networks import ActorCritic, Params, apply
 from sparjax.opponents.cfr import to_openspiel_policy
 from sparjax.opponents.tabular import TabularPolicy
 
-__all__ = ["ExactEvaluation", "evaluate_exact", "network_to_tabular"]
+__all__ = ["ExactEvaluation", "evaluate_exact", "mixture_exploitability", "network_to_tabular"]
 
 
 def network_to_tabular(
@@ -88,3 +89,26 @@ def evaluate_exact(learner: TabularPolicy, opponent: TabularPolicy) -> ExactEval
     seat1 = float(policy_value(root, [op, lp])[1])
     expl = float(os_exploitability.exploitability(game, lp))
     return ExactEvaluation(payoff_vs_opponent=(seat0, seat1), exploitability=expl)
+
+
+def mixture_exploitability(
+    policies: list[TabularPolicy], weights: list[float] | None = None
+) -> float:
+    """Exploitability of the *mixture* of ``policies``.
+
+    The mixture picks one of the policies at the start of each game, with probability
+    ``weights``. This is the correct average strategy in an extensive-form game. Each policy is
+    weighted by its probability of reaching each information state (OpenSpiel's
+    ``PolicyAggregator``), not by naively averaging action probabilities state by state.
+    In fictitious self-play, this average, not the learner's current policy, is what
+    converges to a Nash equilibrium.
+    """
+    if not policies:
+        raise ValueError("need at least one policy")
+    game = pyspiel.load_game(policies[0].game_name)
+    os_pols = [to_openspiel_policy(p, game) for p in policies]
+    w = list(weights) if weights is not None else [1.0 / len(os_pols)] * len(os_pols)
+    agg = policy_aggregator.PolicyAggregator(game).aggregate(
+        list(range(game.num_players())), [os_pols] * game.num_players(), [w] * game.num_players()
+    )
+    return float(os_exploitability.exploitability(game, agg))

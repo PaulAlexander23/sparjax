@@ -23,7 +23,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import jax
 import numpy as np
@@ -53,6 +53,7 @@ from sparjax.envs.loop import BatchedOpponentLoop
 from sparjax.envs.subprocess import SubprocessAECBatch
 from sparjax.loggers import Logger, NullLogger
 from sparjax.opponents.base import OpponentProvider
+from sparjax.opponents.selfplay import SnapshotSink
 
 __all__ = ["Rollout", "TrainResult", "train"]
 
@@ -235,6 +236,10 @@ def train(
     server = ParameterServer([resolve_device(cfg.arch.actor_device)], lifetime)
     pipeline = OnPolicyPipeline(cfg.arch.num_actors, lifetime)
     server.publish(params, version=0)
+    snapshot_sink = provider if isinstance(provider, SnapshotSink) else None
+    if snapshot_sink is not None:
+        # Self-play needs at least one opponent before the actors start.
+        snapshot_sink.add_snapshot(0, graphdef, jax.device_get(params))
     for i in range(cfg.arch.num_actors):
         lifetime.spawn(
             _actor, f"actor-{i}", i, cfg, env_fn, provider, act_fn, server, pipeline, lifetime
@@ -304,6 +309,9 @@ def train(
                 timing["actor_param_wait_s"] += r.param_wait_s / len(rollouts)
                 timing["actor_collect_s"] += r.collect_s / len(rollouts)
             server.publish(params, version=u + 1)
+            every = cfg.opponent.selfplay.snapshot_every
+            if snapshot_sink is not None and every > 0 and (u + 1) % every == 0:
+                snapshot_sink.add_snapshot(u + 1, graphdef, jax.device_get(params))
             for r in rollouts:
                 window += r.episode_returns
                 result.episode_returns += r.episode_returns
@@ -319,6 +327,9 @@ def train(
                     row[f"perf/{name}"] = total / updates_since  # mean seconds per update
                 timing = dict.fromkeys(timing, 0.0)
                 row["train/episodes"] = float(len(window))
+                provider_metrics = getattr(provider, "metrics", None)
+                if callable(provider_metrics):
+                    row.update(cast("dict[str, float]", provider_metrics()))
                 row["train/return_mean"] = float(np.mean(window)) if window else float("nan")
                 outcomes = np.sign(np.asarray(window, dtype=np.float64))
                 row["train/win_rate"] = float(np.mean(outcomes > 0)) if window else float("nan")

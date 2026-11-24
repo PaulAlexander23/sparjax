@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from sparjax.config import OpponentConfig, TrainConfig
-from sparjax.opponents.base import Opponent
+from sparjax.opponents.base import Opponent, OpponentProvider
 from sparjax.opponents.go import GoLightPlayoutOpponent
 from sparjax.opponents.providers import FixedProvider
+from sparjax.opponents.selfplay import SnapshotPoolProvider
 from sparjax.opponents.simple import RandomOpponent
 from sparjax.opponents.tabular import TabularPolicy, TabularPolicyOpponent
 
@@ -27,7 +28,8 @@ class OpponentSpec:
     """A constructed opponent plus its tabular form when it has one (for exact evaluation)."""
 
     opponent_id: str
-    opponent: Opponent
+    opponent: Opponent | None
+    """``None`` for self-play, whose opponents come from the snapshot pool."""
     table: TabularPolicy | None
     """Tabular form, available for OpenSpiel games (enables exact evaluation)."""
 
@@ -48,6 +50,8 @@ def make_opponent(cfg: OpponentConfig, game: str | None) -> OpponentSpec:
     For OpenSpiel games every supported opponent is tabular (random play is CFR's first
     average policy), so the exact best-response ceiling is always computable.
     """
+    if cfg.kind == "selfplay":
+        return OpponentSpec("selfplay", None, None)
     if cfg.kind == "go_light":
         return OpponentSpec("go_light", GoLightPlayoutOpponent(), None)
     if game is None:
@@ -83,6 +87,17 @@ def make_scripted_opponent(name: str) -> Opponent:
     raise ValueError(f"unknown scripted opponent {name!r}")
 
 
-def make_provider(spec: OpponentSpec) -> FixedProvider:
-    """A provider that always serves ``spec``'s opponent."""
+def make_provider(
+    spec: OpponentSpec, cfg: OpponentConfig | None = None, seed: int = 0
+) -> OpponentProvider:
+    """The provider for ``spec``: a snapshot pool for self-play, else a fixed opponent."""
+    if spec.opponent is None:
+        sp = (cfg or OpponentConfig(kind="selfplay")).selfplay
+        return SnapshotPoolProvider(
+            sampler=sp.sampler,
+            max_size=sp.pool_size,
+            latest_prob=sp.latest_prob,
+            pfsp_power=sp.pfsp_power,
+            seed=seed,
+        )
     return FixedProvider(spec.opponent, spec.opponent_id)
