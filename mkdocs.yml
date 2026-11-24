@@ -55,4 +55,5 @@ nav:
   - Experiments:
       - CFR opponents on Leduc: experiments/cfr-leduc.md
       - PPO vs fixed opponents in Kuhn: experiments/kuhn-ppo.md
+      - PPO vs CFR opponents in Leduc: experiments/leduc-ppo.md
   - API reference: api/index.md

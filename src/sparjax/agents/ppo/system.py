@@ -18,6 +18,8 @@ provider for a new opponent at the start of each rollout.
 
 from __future__ import annotations
 
+import json
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -43,6 +45,8 @@ from sparjax.arch import (
     StopRequestedError,
     resolve_device,
 )
+from sparjax.arch.evaluator import AsyncEvaluator
+from sparjax.checkpoint import config_to_dict, save_checkpoint
 from sparjax.config import TrainConfig
 from sparjax.envs.batch import InProcessAECBatch
 from sparjax.envs.loop import BatchedOpponentLoop
@@ -74,6 +78,14 @@ class TrainResult:
     history: list[dict[str, float]] = field(default_factory=list[dict[str, float]])
     episode_returns: list[float] = field(default_factory=list[float])
     """Every finished game's learner payoff, in learner-update order."""
+
+
+def _lr_schedule(cfg: TrainConfig) -> float | optax.Schedule:
+    """Constant learning rate, or linear decay to zero over all optimiser steps."""
+    if not cfg.ppo.anneal_lr:
+        return cfg.ppo.lr
+    steps = cfg.num_updates * cfg.ppo.update.epochs * cfg.ppo.update.num_minibatches
+    return optax.linear_schedule(cfg.ppo.lr, 0.0, steps)
 
 
 def _make_act_fn(graphdef: nnx.GraphDef[ActorCritic]) -> Any:
@@ -184,7 +196,7 @@ def train(
     learner_device = resolve_device(cfg.arch.learner_device)
     params = jax.device_put(params, learner_device)
     optimizer = optax.chain(
-        optax.clip_by_global_norm(cfg.ppo.max_grad_norm), optax.adam(cfg.ppo.lr, eps=1e-5)
+        optax.clip_by_global_norm(cfg.ppo.max_grad_norm), optax.adam(_lr_schedule(cfg), eps=1e-5)
     )
     opt_state = optimizer.init(params)
     update_fn = jax.jit(make_update_fn(graphdef, optimizer, cfg.ppo.update))
@@ -201,6 +213,40 @@ def train(
         )
 
     result = TrainResult(graphdef=graphdef, params=params)
+    log_lock = threading.Lock()
+
+    def emit(step: int, row: dict[str, float]) -> None:
+        with log_lock:
+            logger.log(step, row)
+            result.history.append({"step": float(step), **row})
+
+    evaluator: AsyncEvaluator | None = None
+    if on_update is not None and cfg.arch.async_eval:
+        hook = on_update
+
+        def eval_fn(update: int, p: Params) -> dict[str, float]:
+            return hook(update, graphdef, p) or {}
+
+        def eval_sink(update: int, step: int, metrics: dict[str, float]) -> None:
+            emit(step, {"eval/update": float(update), **metrics})
+
+        evaluator = AsyncEvaluator(eval_fn, eval_sink, lifetime)
+
+    def checkpoint(update: int) -> None:
+        if cfg.log_dir is None:
+            return
+        save_checkpoint(
+            cfg.log_dir / "checkpoints" / f"update_{update:06d}.npz",
+            params,
+            obs_dim=obs_dim,
+            num_actions=num_actions,
+            hidden=cfg.ppo.hidden,
+            meta={"update": update, "step": update * cfg.steps_per_update, "game": cfg.env.game},
+        )
+
+    if cfg.log_dir is not None:
+        cfg.log_dir.mkdir(parents=True, exist_ok=True)
+        (cfg.log_dir / "config.json").write_text(json.dumps(config_to_dict(cfg), indent=2))
     window: list[float] = []
     start = last_log = time.perf_counter()
     last_logged_update = 0
@@ -215,7 +261,8 @@ def train(
             )
             batch = jax.device_put(batch, learner_device)
             key, sub = jax.random.split(key)
-            params, opt_state, metrics = update_fn(params, opt_state, batch, sub)
+            ent_coef = cfg.ppo.ent_coef_at(u / cfg.num_updates)
+            params, opt_state, metrics = update_fn(params, opt_state, batch, sub, ent_coef)
             server.publish(params, version=u + 1)
             for r in rollouts:
                 window += r.episode_returns
@@ -235,12 +282,18 @@ def train(
                     if len(window) > 1
                     else float("nan")
                 )
-                if on_update is not None:
-                    row.update(on_update(u + 1, graphdef, params) or {})
                 step = (u + 1) * cfg.steps_per_update
-                logger.log(step, row)
-                result.history.append({"step": float(step), **row})
+                if evaluator is not None:
+                    evaluator.submit(u + 1, step, params)
+                elif on_update is not None:
+                    row.update(on_update(u + 1, graphdef, params) or {})
+                emit(step, row)
                 window, last_log, last_logged_update = [], time.perf_counter(), u + 1
+            if cfg.checkpoint_every and (u + 1) % cfg.checkpoint_every == 0:
+                checkpoint(u + 1)
+        checkpoint(cfg.num_updates)
+        if evaluator is not None:
+            evaluator.finish()
     except StopRequestedError:
         pass
     finally:
