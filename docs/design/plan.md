@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1–M4 complete (PRs open); M5 next.**
+> Status as of 2026-11-24: **M1–M5 complete; plan to be reassessed.**
 
 ## Guiding rules
 
@@ -154,6 +154,12 @@ because entropy collapses early (see the Kuhn PPO experiment page). Deviations f
 3. An experiment script and a docs page with curves: PPO payoff against CFR(k) for 2–3 values of k, next to the exact BR value.
 
 **Done when:** the v1 success criterion from the brief (≥ ~80% of the BR value for several k) is met and documented.
+
+*Outcome:* met. On Leduc, PPO reaches 99.4% / 82.9% / 99.5% / 91.6% / 84.6% of the exact
+best-response payoff against random play and CFR+(5/10/20/50). The key was an entropy
+schedule that starts high (0.1–0.2) and decays to 0, plus a 20M-step budget for the harder
+opponents. Checkpointing uses plain npz (with nnx pure dicts) rather than orbax. Details are
+on the Leduc PPO experiment page.
 
 ---
 
