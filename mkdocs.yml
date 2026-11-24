@@ -52,4 +52,7 @@ nav:
   - Design:
       - Project brief: design/brief.md
       - Implementation plan: design/plan.md
+  - Experiments:
+      - CFR opponents on Leduc: experiments/cfr-leduc.md
+      - PPO vs fixed opponents in Kuhn: experiments/kuhn-ppo.md
   - API reference: api/index.md

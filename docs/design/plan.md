@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1 complete (PR open); M2 next.**
+> Status as of 2026-11-24: **M1–M4 complete (PRs open); M5 next.**
 
 ## Guiding rules
 
@@ -93,10 +93,10 @@ class OpponentProvider(Protocol):
    - All `pyspiel` access is isolated in this module, the only place type ignores are allowed.
 3. Tests: PettingZoo `api_test`, seeding determinism, and payoff parity with `pyspiel` on random playouts.
 4. `opponents/`: `Opponent`/`OpponentProvider` protocols, `RandomOpponent`, `ScriptedOpponent`, `TabularPolicyOpponent` (+ npz/JSON save/load), `FixedProvider`, `MixtureProvider`.
-5. `opponents/cfr.py` + CLI `sparjax cfr solve <game> --iters K --out file`: run CFR+ and export the average policy. Also `sparjax cfr br <policy>`, which prints the best-response value for each seat and the exploitability via OpenSpiel.
+5. `opponents/cfr.py` + CLI `sparjax cfr-solve --game <game> --iters K --out file`: run CFR+ and export the average policy. Also `sparjax cfr-br --policy <file>`, which prints the best-response value for each seat and the exploitability via OpenSpiel. *(Shipped with flat `cfr-solve`/`cfr-br` subcommands; tyro was pulled forward from M4 for this.)*
 6. Tests: CFR on Kuhn converges near the known game value (−1/18 for player 0); a tabular round-trip keeps the policy identical.
 
-**Done when:** `sparjax cfr solve leduc_poker --iters 1000` writes a policy, and `cfr br` reports its BR values. A tabular opponent loaded from that file plays legally in the AEC env.
+**Done when:** `sparjax cfr-solve --game leduc_poker --iters 1000` writes a policy, and `cfr-br` reports its BR values. A tabular opponent loaded from that file plays legally in the AEC env.
 
 ---
 
@@ -110,6 +110,12 @@ class OpponentProvider(Protocol):
 4. Tests (Hypothesis property tests): the sum of learner rewards per episode equals the game's return; the learner is never asked to act off-turn; shapes are constant; seats are balanced across resets.
 
 **Done when:** a random learner against `RandomOpponent` on Leduc runs for 10k steps with all invariants holding.
+
+*Outcome:* done. The reward-accounting property test caught a real bug: a reward received in a
+freshly reset game, before the learner's first move, was credited to the previous game's final
+transition. It is fixed with a per-env carry that goes into the new game's first transition.
+Throughput on one core (Leduc, random learner): about 14k learner steps/s (7k games/s) at
+N = 64–256, about 10.6k at N = 16, and the same against a CFR tabular opponent.
 
 ---
 
@@ -127,11 +133,23 @@ class OpponentProvider(Protocol):
 
 **Done when:** PPO on Kuhn against a uniform-random opponent beats it clearly, and against CFR(k) gets close to its best-response value.
 
+*Outcome:* mostly done. PPO reaches the exact best-response payoff against random play and
+CFR(2), and is within 1.8% against CFR(5). Against CFR(20) it stalls at 36% of the ceiling
+because entropy collapses early (see the Kuhn PPO experiment page). Deviations from the plan:
+- The learner is **single-device** `jax.jit`. `shard_map` over several learner devices
+  moved to M7, because the dev machine has one GPU and can't test it.
+- **Exact evaluation** (`eval/exact.py`: network → tabular policy → OpenSpiel payoff and
+  exploitability) was pulled forward from M5 to measure this milestone.
+- `ParameterServer` is a versioned latest-value slot (explicit `max_lag`) rather than
+  Stoix's per-actor queues.
+- Truncations are treated as terminations in GAE (the poker envs never truncate). Correct
+  bootstrapping needs the pre-reset final observation, which is noted for M7.
+
 ---
 
 ## M5: Leduc against CFR + evaluation
 
-1. `eval/`: payoff with confidence intervals for each seat; the gap to the best response; exploitability of the PPO policy (query the network at every info state to build an OpenSpiel `TabularPolicy`).
+1. `eval/`: payoff with confidence intervals for each seat; the gap to the best response; exploitability of the PPO policy. *(Exact versions of all three landed in M4.)* Remaining: the exploration fixes found in M4 (entropy schedule / tuning) so PPO can capture small edges.
 2. An async evaluator thread, plus checkpointing (orbax or plain npz; decided here).
 3. An experiment script and a docs page with curves: PPO payoff against CFR(k) for 2–3 values of k, next to the exact BR value.
 

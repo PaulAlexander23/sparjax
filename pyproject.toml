@@ -21,14 +21,25 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "flax>=0.12.12",
     "jax>=0.12.1",
+    "jaxtyping>=0.3.11",
     "numpy>=2.2",
+    "optax>=0.2.9",
+    "pettingzoo>=1.27.0",
+    "tyro>=1.0.17",
 ]
 
 [project.optional-dependencies]
 cuda12 = [
     "jax[cuda12]>=0.12.1",
 ]
+openspiel = [
+    "open-spiel>=2.0.2",
+]
+
+[project.scripts]
+sparjax = "sparjax.cli:main"
 
 [project.urls]
 Repository = "https://github.com/PaulAlexander23/sparjax"
@@ -41,6 +52,8 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "basedpyright>=1.40.2",
+    "hypothesis>=6.170.17",
+    "open-spiel>=2.0.2",
     "pre-commit>=4.7.0",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
@@ -73,6 +86,10 @@ select = [
     "D",        # pydocstyle
 ]
 
+# F722: jaxtyping shape strings such as Float[Array, "batch obs"] look like bad
+# forward annotations to pyflakes. This is the workaround recommended by jaxtyping.
+ignore = ["F722"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -94,10 +111,14 @@ reportUnusedCallResult = false
 
 [[tool.basedpyright.executionEnvironments]]
 root = "tests"
+extraPaths = ["."]
 # pytest fixtures and parametrisation are loosely typed.
 reportPrivateUsage = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportMissingTypeStubs = false
+reportUnknownLambdaType = false
 
 # ---------------------------------------------------------------------------
 # pytest / coverage
