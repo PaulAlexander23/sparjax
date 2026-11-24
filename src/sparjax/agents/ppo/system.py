@@ -154,6 +154,19 @@ def _actor(
             actions[t], log_probs[t], values[t] = np.asarray(a), np.asarray(lp), np.asarray(v)
             step = loop.step(actions[t])
             rewards[t], dones[t] = step.rewards, step.dones
+            if step.final_observations:
+                # Truncated games: bootstrap with the value of the cut-off position so GAE
+                # can treat the step as terminal without biasing towards zero.
+                ids = np.fromiter(step.final_observations, dtype=np.int64)
+                finals = np.stack([step.final_observations[int(i)] for i in ids])
+                key, sub = jax.random.split(key)
+                _, _, v_final = act_fn(
+                    params,
+                    jax.device_put(finals, device),
+                    jax.device_put(np.ones((len(ids), A), bool), device),
+                    sub,
+                )
+                rewards[t, ids] += cfg.ppo.update.gamma * np.asarray(v_final)
             for ep in step.episodes:
                 if ep.learner_decisions > 0:
                     ep_returns.append(ep.learner_return)

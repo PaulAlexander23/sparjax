@@ -86,3 +86,33 @@ epochs) whenever the learner was updating. XLA runs the learner's large update p
 and the actors' small inference calls one after another on the device, so acting
 stalled during training. CPU actors avoid this, and they are faster overall here too
 (8,839 vs 8,204).
+
+## 4. Against a stronger scripted opponent (M7a)
+
+Trained against `go_light` (the light-playout policy, which itself beats random 90.5% on
+9×9). Every 10 updates the network is evaluated by playing 200 games against each of
+`random` and `go_light`. Settings: 4 actors × 2 workers × 128 envs, async, 15M decisions,
+otherwise as above.
+
+```bash
+uv run sparjax train --env.id pettingzoo:classic/go-v5 --env.kwargs board_size 9 \
+    --env.num-envs 128 --env.num-workers 2 --arch.num-actors 4 --opponent.kind go_light \
+    --ppo.conv-channels 32 64 64 --ppo.hidden 256 --ppo.rollout-len 32 \
+    --ppo.update.num-minibatches 8 --total-timesteps 15000000 \
+    --eval.opponents random go_light --eval.games 200
+```
+
+| decisions | vs random | vs go_light (95% CI) |
+|---:|---:|---:|
+| 0.2M | 51.5% | 17.9% ± 5.3% |
+| 1.8M | 99.0% | **97.0%** ± 2.4% |
+| 3.3M | 100% | 98.5% ± 1.7% |
+| 9.2M | 100% | **99.5%** ± 1.0% |
+| 15.0M | 100% | 98.0% ± 1.9% |
+
+PPO overtakes the scripted opponent within about 2M decisions (about 4 minutes) and then
+stays at 98–99.5%, in both seats. Throughput was 7.5k decisions/s, below the 11k benchmark,
+because the 400 evaluation games per check compete with the actors for CPU. The evaluator
+skipped 19 of 92 snapshots while busy, as designed: it always evaluates the newest one.
+This opponent is now too weak to measure further progress; self-play (M7b) is the
+natural next opponent.

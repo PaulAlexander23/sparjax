@@ -21,7 +21,7 @@ Conventions:
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import numpy as np
@@ -56,6 +56,9 @@ class BatchView:
     done: Bool[np.ndarray, " n"]
     truncated: Bool[np.ndarray, " n"]
     info_states: list[str]
+    final_observations: dict[int, np.ndarray] = field(default_factory=dict[int, np.ndarray])
+    """For rows whose game ended by truncation: each seat's final observation,
+    ``[num_seats, *obs_shape]``, used to bootstrap the value of the cut-off position."""
 
 
 class AECBatch(Protocol):
@@ -248,6 +251,14 @@ class InProcessAECBatch:
             view.truncated[row] = any(env.truncations.values()) and not any(
                 env.terminations.values()
             )
+            if view.truncated[row]:
+                finals = np.zeros((self.num_seats, *self._obs_shape), dtype=self._obs_dtype)
+                for agent in env.agents:
+                    obs, _ = _split_observation(env.observe(agent), {}, self._num_actions)
+                    finals[self._seat[agent]] = np.asarray(obs, self._obs_dtype).reshape(
+                        self._obs_shape
+                    )
+                view.final_observations[row] = finals
             while env.agents:  # drain dead steps so the env is cleanly finished
                 env.step(None)
             return

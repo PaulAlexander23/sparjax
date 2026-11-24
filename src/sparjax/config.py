@@ -10,7 +10,15 @@ from sparjax.agents.ppo.loss import PPOHyperparams
 from sparjax.arch.devices import DeviceKind
 from sparjax.envs.registry import EnvSpec
 
-__all__ = ["ArchConfig", "EnvConfig", "OpponentConfig", "PPOConfig", "TrainConfig"]
+__all__ = [
+    "ArchConfig",
+    "EnvConfig",
+    "EvalConfig",
+    "OpponentConfig",
+    "PPOConfig",
+    "ScriptedOpponentName",
+    "TrainConfig",
+]
 
 
 @dataclass(frozen=True)
@@ -25,22 +33,25 @@ class EnvConfig:
     """Constructor keyword arguments, e.g. ``board_size 9`` for Go."""
     num_envs: int = 64
     """Environments per actor thread."""
+    max_steps: int | None = None
+    """Truncate each game after this many actions (values are bootstrapped, not zeroed)."""
     num_workers: int = 0
     """Subprocess env workers per actor (0 = step envs in the actor thread itself)."""
 
     @property
     def spec(self) -> EnvSpec:
         """A picklable factory for one environment."""
-        return EnvSpec(self.id, dict(self.kwargs))
+        return EnvSpec(self.id, dict(self.kwargs), self.max_steps)
 
 
 @dataclass(frozen=True)
 class OpponentConfig:
     """The opponent the learner trains against."""
 
-    kind: Literal["random", "cfr", "policy"] = "random"
+    kind: Literal["random", "cfr", "policy", "go_light"] = "random"
     """``random``: uniform over legal actions. ``cfr``: solve with CFR at start-up.
-    ``policy``: load a tabular policy written by ``sparjax cfr-solve``."""
+    ``policy``: load a tabular policy written by ``sparjax cfr-solve``.
+    ``go_light``: Go "light playout" (random, but never fills own eyes or passes early)."""
     cfr_iters: int = 20
     """CFR iterations when ``kind == "cfr"``."""
     cfr_algorithm: Literal["cfr", "cfr_plus"] = "cfr_plus"
@@ -95,6 +106,21 @@ class ArchConfig:
     blocking the learner."""
 
 
+ScriptedOpponentName = Literal["random", "go_light"]
+
+
+@dataclass(frozen=True)
+class EvalConfig:
+    """Playing-based evaluation against held-out fixed opponents (works for any env)."""
+
+    opponents: tuple[ScriptedOpponentName, ...] = ()
+    """Opponents to evaluate against at every log step (e.g. ``random go_light``)."""
+    games: int = 200
+    """Games per opponent per evaluation."""
+    greedy: bool = False
+    """Play the most likely action instead of sampling."""
+
+
 @dataclass(frozen=True)
 class TrainConfig:
     """Top-level training configuration."""
@@ -103,6 +129,7 @@ class TrainConfig:
     opponent: OpponentConfig = field(default_factory=OpponentConfig)
     ppo: PPOConfig = field(default_factory=PPOConfig)
     arch: ArchConfig = field(default_factory=ArchConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
     total_timesteps: int = 500_000
     """Learner decisions across all actors and envs."""
     seed: int = 0

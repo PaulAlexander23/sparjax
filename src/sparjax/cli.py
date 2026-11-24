@@ -84,7 +84,13 @@ class Train:
         """Build everything from the config and train."""
         from sparjax.agents.ppo.system import train  # heavy imports
         from sparjax.eval.exact import evaluate_exact, network_to_tabular
-        from sparjax.experiment import make_env_fn, make_opponent, make_provider
+        from sparjax.eval.play import play_games
+        from sparjax.experiment import (
+            make_env_fn,
+            make_opponent,
+            make_provider,
+            make_scripted_opponent,
+        )
         from sparjax.opponents.cfr import best_response_report
 
         cfg = self.config
@@ -102,13 +108,26 @@ class Train:
         ]
         print(" ".join(h for h in header if h))
 
+        eval_opponents = {n: make_scripted_opponent(n) for n in cfg.eval.opponents}
+
         def on_update(update: int, graphdef: Any, params: Any) -> dict[str, float]:
-            del update
+            metrics: dict[str, float] = {}
+            for name, opponent in eval_opponents.items():
+                report = play_games(
+                    make_env_fn(cfg),
+                    graphdef,
+                    params,
+                    opponent,
+                    cfg.eval.games,
+                    greedy=cfg.eval.greedy,
+                    seed=cfg.seed + update,
+                )
+                metrics.update(report.as_metrics(f"play/{name}"))
             if game is None or table is None or ceiling is None:
-                return {}
+                return metrics
             learned = network_to_tabular(graphdef, params, game)
             ev = evaluate_exact(learned, table)
-            return {
+            return metrics | {
                 "eval/payoff": ev.mean_payoff,
                 "eval/payoff_seat0": ev.payoff_vs_opponent[0],
                 "eval/payoff_seat1": ev.payoff_vs_opponent[1],
@@ -122,13 +141,15 @@ class Train:
             loggers.append(ConsoleLogger(_CONSOLE_KEYS))
         if cfg.log_dir is not None:
             loggers.append(JsonlLogger(cfg.log_dir / "metrics.jsonl"))
-        hook = on_update if exact else None
+        hook = on_update if exact or eval_opponents else None
         return train(cfg, make_env_fn(cfg), make_provider(spec), MultiLogger(loggers), hook)
 
 
 _CONSOLE_KEYS = [
     "train/return_mean",
     "train/win_rate",
+    "play/random/win_rate",
+    "play/go_light/win_rate",
     "eval/payoff",
     "eval/gap_to_ceiling",
     "eval/exploitability",
