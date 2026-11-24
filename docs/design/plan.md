@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1–M7a complete; M7b (self-play) next.**
+> Status as of 2026-11-24: **M1–M7b complete; remaining extensions listed under M7.**
 
 ## Guiding rules
 
@@ -195,9 +195,22 @@ PPO on Go 9x9 beats `go_light` 97% of the time after 1.8M decisions and peaks at
 
 ---
 
+## M7b: Self-play
+
+*Outcome:* done.
+- `NeuralOpponent` and `SnapshotPoolProvider` with latest / uniform FSP / PFSP samplers.
+- The learner adds a snapshot every K updates.
+- Exact exploitability of the reach-weighted pool average.
+
+On Leduc, FSP with constant entropy 0.05 lowers pool exploitability from 2.15 to 0.89 in 10M
+decisions and is still improving. Low-entropy variants stall and then degrade (see the
+self-play experiment page).
+
+---
+
 ## M7: Extensions (ordered by interest, decided later)
 
-- `NeuralOpponent` + `SnapshotPoolProvider` (latest / uniform FSP / PFSP): self-play as an opponent provider.
+- Stronger self-play: snapshot less often (closer-to-converged best responses), NFSP/PSRO-style average policies, Go self-play.
 - More PettingZoo envs through the adapter (Connect Four, Texas Hold'em) and an "add your own env" guide.
 - Recurrent policy; W&B logger backend; multiple learner devices.
 

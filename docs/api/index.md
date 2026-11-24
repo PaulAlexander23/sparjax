@@ -28,6 +28,12 @@
 
 ::: sparjax.opponents.cfr
 
+::: sparjax.opponents.go
+
+::: sparjax.opponents.neural
+
+::: sparjax.opponents.selfplay
+
 ## Sebulba architecture
 
 ::: sparjax.arch.lifetime
@@ -51,6 +57,8 @@
 ## Evaluation
 
 ::: sparjax.eval.exact
+
+::: sparjax.eval.play
 
 ## Configuration and logging
 
