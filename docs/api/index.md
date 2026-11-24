@@ -34,6 +34,8 @@
 
 ::: sparjax.arch.devices
 
+::: sparjax.arch.evaluator
+
 ## PPO
 
 ::: sparjax.agents.ppo.networks
@@ -53,6 +55,8 @@
 ::: sparjax.experiment
 
 ::: sparjax.loggers
+
+::: sparjax.checkpoint
 
 ## Command line
 

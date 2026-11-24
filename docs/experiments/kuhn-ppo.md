@@ -45,3 +45,26 @@ every 10 updates.
   goes −0.072 → −0.027. This is an exploration problem, not a pipeline bug. It matters for
   Leduc (M5), where useful CFR opponents leave edges of 0.03–0.6 chips per hand against a
   payoff standard deviation of about 4.
+
+## Follow-up (M5): entropy schedules fix it
+
+M5 added a linear entropy-coefficient schedule (`--ppo.ent-coef-end`,
+`--ppo.ent-decay-frac`) and optional learning-rate annealing (`--ppo.anneal-lr`). Results
+against CFR(20), 2M steps each:
+
+| entropy schedule | other | final payoff | % of ceiling |
+|---|---|---:|---:|
+| 0.1 → 0 over the first 80% | — | 0.0406 | **99.9%** |
+| 0.03 constant | LR annealed to 0 | 0.0309 | 76% |
+| 0.05 → 0 over 100% | — | 0.0146 | 36% |
+| 0.05 → 0 over 100% | LR 1e-3, annealed | 0.0146 | 36% |
+
+Exploration has to be strong *early*. Starting at 0.05 already lets the policy lock into
+the same local optimum as the constant 0.01 default. Starting at 0.1 and decaying finds
+the exact best response.
+
+```bash
+uv run sparjax train --env.game kuhn_poker --opponent.kind cfr --opponent.cfr-iters 20 \
+    --opponent.cfr-algorithm cfr --total-timesteps 2000000 \
+    --ppo.update.ent-coef 0.1 --ppo.ent-coef-end 0.0 --ppo.ent-decay-frac 0.8
+```

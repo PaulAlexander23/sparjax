@@ -47,6 +47,20 @@ class PPOConfig:
     """Learner decisions per env per rollout."""
     hidden: tuple[int, ...] = (64, 64)
     update: PPOHyperparams = field(default_factory=PPOHyperparams)
+    ent_coef_end: float | None = None
+    """If set, the entropy coefficient decays linearly from ``update.ent_coef`` to this."""
+    ent_decay_frac: float = 1.0
+    """Fraction of training over which the entropy coefficient decays."""
+    anneal_lr: bool = False
+    """Decay the learning rate linearly to zero over training."""
+
+    def ent_coef_at(self, progress: float) -> float:
+        """Entropy coefficient at training ``progress`` in ``[0, 1]``."""
+        start = self.update.ent_coef
+        if self.ent_coef_end is None:
+            return start
+        frac = min(1.0, progress / self.ent_decay_frac) if self.ent_decay_frac > 0 else 1.0
+        return start + (self.ent_coef_end - start) * frac
 
 
 @dataclass(frozen=True)
@@ -61,6 +75,9 @@ class ArchConfig:
     """Where the PPO update runs (the GPU when a CUDA jaxlib is installed)."""
     max_lag: int = 1
     """Allowed parameter staleness in updates (0 = strictly on-policy, 1 = Sebulba)."""
+    async_eval: bool = True
+    """Run evaluation hooks in a background thread (newest snapshot wins) instead of
+    blocking the learner."""
 
 
 @dataclass(frozen=True)
@@ -77,7 +94,10 @@ class TrainConfig:
     log_every: int = 10
     """Log every this many updates."""
     log_dir: Path | None = None
-    """If set, metrics are also written to ``<log_dir>/metrics.jsonl``."""
+    """If set, metrics go to ``<log_dir>/metrics.jsonl``, the config to ``config.json``,
+    and checkpoints to ``<log_dir>/checkpoints/``."""
+    checkpoint_every: int = 0
+    """Save a checkpoint every this many updates (0 = only at the end). Needs ``log_dir``."""
 
     @property
     def steps_per_update(self) -> int:

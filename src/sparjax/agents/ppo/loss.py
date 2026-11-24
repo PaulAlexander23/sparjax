@@ -90,8 +90,13 @@ def ppo_loss(
     advantages: Float[Array, " B"],
     returns: Float[Array, " B"],
     hp: PPOHyperparams,
+    ent_coef: float | Float[Array, ""] | None = None,
 ) -> tuple[Float[Array, ""], dict[str, Float[Array, ""]]]:
-    """Clipped-surrogate PPO loss with value and entropy terms."""
+    """Clipped-surrogate PPO loss with value and entropy terms.
+
+    ``ent_coef`` overrides ``hp.ent_coef`` (used for entropy schedules).
+    """
+    ent_coef = hp.ent_coef if ent_coef is None else ent_coef
     logits, values = apply(graphdef, params, obs, mask)
     dist = MaskedCategorical(logits, mask)
     log_probs = dist.log_prob(actions)
@@ -104,7 +109,7 @@ def ppo_loss(
     ).mean()
     v_loss = 0.5 * jnp.square(values - returns).mean()
     entropy = dist.entropy().mean()
-    total = pg_loss + hp.vf_coef * v_loss - hp.ent_coef * entropy
+    total = pg_loss + hp.vf_coef * v_loss - ent_coef * entropy
     metrics = {
         "loss/policy": pg_loss,
         "loss/value": v_loss,
@@ -119,14 +124,20 @@ def ppo_loss(
 def make_update_fn(
     graphdef: nnx.GraphDef[ActorCritic], optimizer: optax.GradientTransformation, hp: PPOHyperparams
 ) -> Any:
-    """Build ``update(params, opt_state, batch, key) -> (params, opt_state, metrics)``.
+    """Build ``update(params, opt_state, batch, key, ent_coef) -> (params, opt_state, metrics)``.
+
+    ``ent_coef`` is a traced scalar, so an entropy schedule does not trigger recompilation.
 
     One call runs ``epochs`` passes over the flattened ``T * N`` samples in
     ``num_minibatches`` shuffled minibatches. The returned function is not yet jitted.
     """
 
     def update(
-        params: Params, opt_state: Any, batch: Batch, key: jax.Array
+        params: Params,
+        opt_state: Any,
+        batch: Batch,
+        key: jax.Array,
+        ent_coef: float | jax.Array = hp.ent_coef,
     ) -> tuple[Params, Any, dict[str, Array]]:
         advantages, returns = compute_gae(
             batch.rewards, batch.values, batch.dones, batch.last_value, hp.gamma, hp.gae_lambda
@@ -145,7 +156,9 @@ def make_update_fn(
         def minibatch_step(carry: tuple[Params, Any], idx: Array) -> Any:
             p, o = carry
             mb_data = jax.tree.map(lambda x: x[idx], flat)
-            grads, metrics = jax.grad(ppo_loss, argnums=1, has_aux=True)(graphdef, p, *mb_data, hp)
+            grads, metrics = jax.grad(ppo_loss, argnums=1, has_aux=True)(
+                graphdef, p, *mb_data, hp, ent_coef
+            )
             updates, o = optimizer.update(grads, o, p)
             p = optax.apply_updates(p, updates)
             metrics["opt/grad_norm"] = optax.tree.norm(grads)
@@ -165,6 +178,7 @@ def make_update_fn(
             jnp.var(returns) + 1e-8
         )
         metrics["value/mean"] = batch.values.mean()
+        metrics["ppo/ent_coef"] = jnp.asarray(ent_coef, jnp.float32)
         return params, opt_state, metrics
 
     return update

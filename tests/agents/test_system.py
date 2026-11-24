@@ -6,6 +6,7 @@ import pytest
 
 from sparjax.agents.ppo.loss import PPOHyperparams
 from sparjax.agents.ppo.system import train
+from sparjax.checkpoint import load_checkpoint
 from sparjax.cli import main
 from sparjax.config import ArchConfig, EnvConfig, OpponentConfig, PPOConfig, TrainConfig
 from sparjax.envs.openspiel_aec import OpenSpielAECEnv
@@ -68,7 +69,11 @@ def test_actor_failure_is_raised_not_hung() -> None:
 
 
 def test_on_update_hook_and_jsonl_logging(tmp_path: Path) -> None:
-    cfg = small_cfg(total_timesteps=2 * 32 * 16 * 4, log_every=2)
+    cfg = small_cfg(
+        total_timesteps=2 * 32 * 16 * 4,
+        log_every=2,
+        arch=ArchConfig(num_actors=2, async_eval=False),
+    )
     seen: list[int] = []
 
     def hook(update: int, graphdef: object, params: object) -> dict[str, float]:
@@ -146,9 +151,15 @@ def test_cli_train_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     out = capsys.readouterr().out
     assert "ceiling" in out
     assert "eval/payoff" in out
-    rows = (tmp_path / "metrics.jsonl").read_text().splitlines()
-    assert len(rows) == 2
-    assert "eval/exploitability" in json.loads(rows[-1])
+    rows = [json.loads(r) for r in (tmp_path / "metrics.jsonl").read_text().splitlines()]
+    train_rows = [r for r in rows if "eval/update" not in r]
+    eval_rows = [r for r in rows if "eval/update" in r]
+    assert len(train_rows) == 2
+    assert 1 <= len(eval_rows) <= 2
+    assert eval_rows[-1]["eval/update"] == 4  # the final parameters are always evaluated
+    assert "eval/exploitability" in eval_rows[-1]
+    assert (tmp_path / "config.json").exists()
+    assert (tmp_path / "checkpoints" / "update_000004.npz").exists()
 
 
 def test_cli_train_quiet_without_eval(capsys: pytest.CaptureFixture[str]) -> None:
@@ -170,3 +181,49 @@ def test_cli_train_quiet_without_eval(capsys: pytest.CaptureFixture[str]) -> Non
     out = capsys.readouterr().out
     assert "eval/payoff" not in out
     assert np.isfinite(1.0)
+
+
+def test_async_eval_rows_and_checkpoints(tmp_path: Path) -> None:
+    cfg = small_cfg(
+        total_timesteps=2 * 32 * 16 * 6, log_every=2, checkpoint_every=3, log_dir=tmp_path
+    )
+    calls: list[int] = []
+
+    def hook(update: int, graphdef: object, params: object) -> dict[str, float]:
+        del graphdef, params
+        calls.append(update)
+        return {"custom/metric": float(update)}
+
+    result = train(cfg, make_env_fn(cfg), FixedProvider(RandomOpponent()), None, hook)
+    assert calls[-1] == 6
+    eval_rows = [h for h in result.history if "eval/update" in h]
+    assert eval_rows[-1]["custom/metric"] == 6.0
+    names = sorted(p.name for p in (tmp_path / "checkpoints").iterdir())
+    assert names == ["update_000003.npz", "update_000006.npz"]
+
+    ckpt = load_checkpoint(tmp_path / "checkpoints" / "update_000006.npz")
+    assert ckpt.meta["update"] == 6
+    a = network_to_tabular(ckpt.graphdef, ckpt.params, "kuhn_poker")
+    b = network_to_tabular(result.graphdef, result.params, "kuhn_poker")
+    for key in a.probs:
+        np.testing.assert_allclose(a.probs[key], b.probs[key], atol=1e-6)
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert config["env"]["game"] == "kuhn_poker"
+
+
+def test_entropy_schedule_and_lr_annealing() -> None:
+    ppo = PPOConfig(update=PPOHyperparams(ent_coef=0.1), ent_coef_end=0.0, ent_decay_frac=0.5)
+    assert ppo.ent_coef_at(0.0) == pytest.approx(0.1)
+    assert ppo.ent_coef_at(0.25) == pytest.approx(0.05)
+    assert ppo.ent_coef_at(0.9) == pytest.approx(0.0)
+    assert PPOConfig().ent_coef_at(0.7) == pytest.approx(0.01)
+    assert PPOConfig(ent_coef_end=0.0, ent_decay_frac=0.0).ent_coef_at(0.1) == 0.0
+    cfg = small_cfg(
+        ppo=PPOConfig(rollout_len=16, ent_coef_end=0.0, anneal_lr=True),
+        total_timesteps=2 * 32 * 16 * 4,
+        log_every=1,
+    )
+    result = train(cfg, make_env_fn(cfg), FixedProvider(RandomOpponent()))
+    coefs = [h["ppo/ent_coef"] for h in result.history]
+    assert coefs[0] == pytest.approx(0.01)
+    assert coefs == sorted(coefs, reverse=True)
