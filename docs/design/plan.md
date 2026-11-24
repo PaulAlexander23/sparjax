@@ -2,7 +2,7 @@
 
 > Companion to [the brief](brief.md) (the *why*). This file is the *what and
 > in which order*. Every milestone ends with CI green and something demonstrable.
-> Status as of 2026-11-24: **M1 complete (PR open); M2 next.**
+> Status as of 2026-11-24: **M1 and M2 complete (PRs open); M3 next.**
 
 ## Guiding rules
 
@@ -93,10 +93,10 @@ class OpponentProvider(Protocol):
    - All `pyspiel` access is isolated in this module, the only place type ignores are allowed.
 3. Tests: PettingZoo `api_test`, seeding determinism, and payoff parity with `pyspiel` on random playouts.
 4. `opponents/`: `Opponent`/`OpponentProvider` protocols, `RandomOpponent`, `ScriptedOpponent`, `TabularPolicyOpponent` (+ npz/JSON save/load), `FixedProvider`, `MixtureProvider`.
-5. `opponents/cfr.py` + CLI `sparjax cfr solve <game> --iters K --out file`: run CFR+ and export the average policy. Also `sparjax cfr br <policy>`, which prints the best-response value for each seat and the exploitability via OpenSpiel.
+5. `opponents/cfr.py` + CLI `sparjax cfr-solve --game <game> --iters K --out file`: run CFR+ and export the average policy. Also `sparjax cfr-br --policy <file>`, which prints the best-response value for each seat and the exploitability via OpenSpiel. *(Shipped with flat `cfr-solve`/`cfr-br` subcommands; tyro was pulled forward from M4 for this.)*
 6. Tests: CFR on Kuhn converges near the known game value (−1/18 for player 0); a tabular round-trip keeps the policy identical.
 
-**Done when:** `sparjax cfr solve leduc_poker --iters 1000` writes a policy, and `cfr br` reports its BR values. A tabular opponent loaded from that file plays legally in the AEC env.
+**Done when:** `sparjax cfr-solve --game leduc_poker --iters 1000` writes a policy, and `cfr-br` reports its BR values. A tabular opponent loaded from that file plays legally in the AEC env.
 
 ---
 

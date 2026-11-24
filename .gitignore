@@ -227,3 +227,4 @@ site/
 runs/
 *.npz
 !tests/**/*.npz
+policies/
